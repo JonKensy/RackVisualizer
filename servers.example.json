@@ -1,0 +1,4 @@
+[
+  { "host": "idrac1.example.com" },
+  { "host": "idrac2.example.com" }
+]

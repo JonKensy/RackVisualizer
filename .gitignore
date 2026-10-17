@@ -1,0 +1,11 @@
+node_modules/
+
+# Secrets and site-specific config — never commit
+.env
+servers.json
+certs/
+data/
+test/certs/
+
+# Migration artifacts (docker save tarballs)
+*.tar.gz

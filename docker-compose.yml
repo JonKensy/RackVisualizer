@@ -1,0 +1,17 @@
+services:
+  rack-visualizer:
+    build: .
+    ports:
+      - "8082:8080"
+    volumes:
+      # servers.json and certs are read-only: the app can never modify the
+      # admin host list or its own TLS key. ./data is the only writable
+      # mount (hosts added via the UI, local users, session secret).
+      - ./servers.json:/app/config/servers.json:ro
+      - ./data:/app/data
+      - ./certs:/app/certs:ro
+    # All configuration secrets (IDRAC_* and LDAP_*) live in .env — see
+    # .env.example for the documented variable list. Keeping them out of this
+    # file means the compose file itself is safe to commit.
+    env_file: .env
+    restart: unless-stopped

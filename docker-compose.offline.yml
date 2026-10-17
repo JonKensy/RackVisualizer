@@ -1,0 +1,19 @@
+# For air-gapped hosts (no registry access): uses a pre-built image that was
+# transferred via `docker save` / `docker load` instead of building from the
+# Dockerfile. On the target VM:
+#   docker load -i rack-visualizer-1.0.0.tar.gz
+#   docker compose -f docker-compose.offline.yml up -d
+services:
+  rack-visualizer:
+    image: rack-visualizer:1.0.0
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./servers.json:/app/config/servers.json:ro
+      - ./data:/app/data
+      - ./certs:/app/certs:ro
+    # IDRAC_* and LDAP_* come from .env (copy .env.example and fill it in;
+    # set LDAP_SERVER empty for local-only auth, or point it at the
+    # destination environment's domain controller).
+    env_file: .env
+    restart: unless-stopped

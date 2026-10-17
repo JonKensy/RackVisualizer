@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log in — Rack Visualizer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Rack Visualizer</h1>
+  </header>
+  <main class="login-main">
+    <form method="post" action="/login" class="login-card">
+      <h2>Log in</h2>
+      <p id="login-error" class="login-error" hidden>Invalid username or password.</p>
+      <input type="hidden" name="next" id="login-next" value="/">
+      <label for="username">Username
+        <input id="username" name="username" required autofocus autocomplete="username">
+      </label>
+      <label for="password">Password
+        <input id="password" name="password" type="password" required autocomplete="current-password">
+      </label>
+      <button type="submit">Log in</button>
+    </form>
+  </main>
+  <script>
+    // Open-redirect guard mirroring the server-side safeNext(): only
+    // same-origin absolute paths are accepted for ?next= (protocol-relative
+    // values like "//evil.com" are rejected). The server re-checks the value
+    // on POST regardless.
+    const params = new URLSearchParams(location.search);
+    if (params.get('error')) document.getElementById('login-error').hidden = false;
+    const next = params.get('next');
+    if (next && next.startsWith('/') && !next.startsWith('//')) document.getElementById('login-next').value = next;
+  </script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rack Visualizer</title>
+  <!-- Served only to authenticated sessions (server-side auth gate); all
+       rack data is fetched from /api/racks and rendered via textContent. -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Rack Visualizer</h1>
+    <div class="header-actions">
+      <select id="env-select" aria-label="Environment"></select>
+      <a class="button-link" href="manage.html">Add/Remove</a>
+      <button id="refresh" type="button">Refresh</button>
+      <div class="account-menu">
+        <button type="button" class="account-toggle" aria-haspopup="true" aria-expanded="false">Account ▾</button>
+        <div class="account-dropdown" hidden>
+          <a href="/change-password">Change password</a>
+          <a href="/logout">Log out</a>
+        </div>
+      </div>
+    </div>
+  </header>
+  <main id="racks" aria-label="Racks"></main>
+  <section id="unassigned" aria-label="Unassigned servers"></section>
+  <section id="errors" aria-label="Connection errors"></section>
+  <div id="tooltip" role="tooltip" hidden></div>
+  <script src="account.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

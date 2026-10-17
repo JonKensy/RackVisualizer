@@ -1,0 +1,4 @@
+[
+  { "host": "mock-idrac" },
+  { "host": "mock-idrac2" }
+]

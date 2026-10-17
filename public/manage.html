@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Add / Remove — Rack Visualizer</title>
+  <!-- Auth-gated page. Every mutation posts to an /api/* endpoint that
+       validates its input server-side; the form fields here are UX only. -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Add / Remove</h1>
+    <div class="header-actions">
+      <a class="button-link" href="/">Back to racks</a>
+      <div class="account-menu">
+        <button type="button" class="account-toggle" aria-haspopup="true" aria-expanded="false">Account ▾</button>
+        <div class="account-dropdown" hidden>
+          <a href="/change-password">Change password</a>
+          <a href="/logout">Log out</a>
+        </div>
+      </div>
+    </div>
+  </header>
+  <div id="action-status" role="status" aria-live="polite"></div>
+  <main class="manage-main">
+    <section class="manage-section">
+      <h2>Add iDRAC node</h2>
+      <form id="add-node-form">
+        <div id="node-rows"></div>
+        <div class="row-actions">
+          <button type="submit">Add nodes</button>
+          <button type="button" id="import-csv">Import CSV</button>
+          <input id="csv-file" type="file" accept=".csv,text/csv,text/plain" hidden>
+        </div>
+      </form>
+      <div id="node-results"></div>
+      <p class="hint">
+        CSV format: one iDRAC host per line, with the host in the first column
+        (extra columns are ignored). A header row such as <code>host</code>,
+        <code>ip</code>, <code>dns</code> or <code>idrac</code> is optional and
+        skipped, as are lines starting with <code>#</code>.
+      </p>
+    </section>
+
+    <section class="manage-section">
+      <h2>Add network device</h2>
+      <form id="add-switch-form">
+        <label>Make / Model <input id="sw-make" type="text" list="sw-make-list" placeholder="Cisco 93180YC-FX3" required></label>
+        <datalist id="sw-make-list"></datalist>
+        <label>Switch name <input id="sw-name" type="text" placeholder="leaf-01" required></label>
+        <label>IP address <input id="sw-ip" type="text" placeholder="10.10.20.31" required></label>
+        <label>Serial number <input id="sw-serial" type="text" required></label>
+        <label>Location <input id="sw-location" type="text" placeholder="DC1 Prod_Rack1 RU18" required></label>
+        <label>Role
+          <select id="sw-role">
+            <option>Leaf A</option>
+            <option>Leaf B</option>
+            <option>Border Leaf A</option>
+            <option>Border Leaf B</option>
+            <option>Management Agg A</option>
+            <option>Management Agg B</option>
+            <option>Spine A</option>
+            <option>Spine B</option>
+            <option>Spine C</option>
+          </select>
+          <span id="sw-role-hint" class="hint" hidden></span>
+        </label>
+        <label>Height
+          <select id="sw-height">
+            <option value="1">1U</option>
+            <option value="2">2U</option>
+          </select>
+        </label>
+        <button type="submit">Add device</button>
+      </form>
+      <div class="row-actions">
+        <button type="button" id="import-switch-csv">Import CSV</button>
+        <input id="switch-csv-file" type="file" accept=".csv,text/csv,text/plain" hidden>
+        <a class="button-link" href="/switches-example.csv" download>Download example CSV</a>
+      </div>
+      <p class="hint">
+        CSV format: header row with <code>Make/Model</code>, <code>Switch name</code>,
+        <code>IP address</code>, <code>Serial number</code>, <code>Location</code>,
+        <code>Role</code>, <code>Height</code> columns (see the example file). Rows
+        whose switch name is already configured are skipped.
+      </p>
+    </section>
+
+    <section class="manage-section">
+      <h2>Current entries</h2>
+      <div id="managed-list"></div>
+    </section>
+  </main>
+  <script src="account.js"></script>
+  <script src="manage.js"></script>
+</body>
+</html>

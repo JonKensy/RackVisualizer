@@ -1,0 +1,4 @@
+Make/Model,Switch name,IP address,Serial number,Location,Role,Height
+Cisco 93180YC-FX3,dc1-leaf01-lf-n9k01,10.0.20.31,ABC1234A567,DC1 Prod_Rack1 RU18,Leaf A,1
+Cisco 93180YC-FX3,dc1-leaf02-lf-n9k02,10.0.20.32,ABC1234A568,DC1 Prod_Rack1 RU20,Leaf B,1
+Cisco 9348YC-FX,dc1-spine01-sp-n9k01,10.0.20.11,DEF5678B001,DC1 Prod_Rack1 RU40,Spine A,1
