@@ -317,9 +317,8 @@ app.get('/api/racks', async (req, res) => {
   results.forEach((result, i) => {
     const host = hosts[i];
     if (result.status === 'fulfilled') {
-      records.push(
-        buildServer(host, result.value.serviceTag, result.value.system, result.value.chassis, result.value.dellAttributes),
-      );
+      const record = buildServer(host, result.value.serviceTag, result.value.system, result.value.chassis, result.value.dellAttributes);
+      records.push({ ...record, hostIp: result.value.hostIp ?? null, hostDns: result.value.hostDns ?? null });
     } else {
       errors.push({ host, reason: result.reason.message });
     }
@@ -338,6 +337,8 @@ app.get('/api/racks', async (req, res) => {
       serial: sw.serial,
       serviceTag: null,
       heightU: sw.heightU,
+      duct: sw.duct ?? false,
+      heightLabel: sw.heightLabel ?? null,
       locationRaw: sw.locationRaw,
       datacenter: parsed.datacenter ?? null,
       env: parsed.env ?? null,
@@ -417,7 +418,17 @@ app.post(
   },
 );
 
-const SWITCH_ROLES = ['Leaf A', 'Leaf B', 'Border Leaf A', 'Border Leaf B', 'Management Agg A', 'Management Agg B', 'Spine A', 'Spine B', 'Spine C'];
+const SWITCH_ROLES = ['Leaf A', 'Leaf B', 'Border Leaf A', 'Border Leaf B', 'Management', 'Management Agg A', 'Management Agg B', 'Spine A', 'Spine B', 'Spine C'];
+
+// Accepted Height values, keyed "<nominal>|<duct>". The mapping is a table
+// rather than nominal+1 because "1.2U with duct" occupies 3U.
+const HEIGHT_OPTIONS = new Map([
+  ['1|0', { heightU: 1, label: '1U' }],
+  ['1|1', { heightU: 2, label: '1U with duct' }],
+  ['1.2|1', { heightU: 2, label: '1.2U with duct' }],
+  ['2|0', { heightU: 2, label: '2U' }],
+  ['2|1', { heightU: 3, label: '2U with duct' }],
+]);
 
 app.get('/api/managed', (req, res) => {
   try {
@@ -444,7 +455,13 @@ function validateSwitch(b) {
   const serial = String(b.serial ?? '').trim();
   const locationRaw = String(b.locationRaw ?? '').trim();
   const role = String(b.role ?? '').trim();
-  const heightU = Number(String(b.heightU ?? '').trim().replace(/u$/i, ''));
+  // Height accepts "1"/"2" or a duct variant ("1d", "1.2U with duct", ...);
+  // the accepted combinations and their occupied U live in HEIGHT_OPTIONS.
+  const heightRaw = String(b.heightU ?? '').trim().toLowerCase();
+  const heightNum = heightRaw.match(/\d+(?:\.\d+)?/)?.[0] ?? null;
+  const duct = /\bduct\b/.test(heightRaw) || /(?:\d+(?:\.\d+)?)\s*u?\s*d$/.test(heightRaw);
+  const heightOpt = heightNum ? HEIGHT_OPTIONS.get(`${heightNum}|${duct ? 1 : 0}`) : null;
+  const heightU = heightOpt ? heightOpt.heightU : NaN;
 
   const problems = [];
   if (!makeModel || makeModel.length > 100) problems.push('Make/Model is required');
@@ -452,12 +469,12 @@ function validateSwitch(b) {
   if (!validHost(ip)) problems.push('IP address is invalid');
   if (!serial || serial.length > 100) problems.push('Serial number is required');
   if (!SWITCH_ROLES.includes(role)) problems.push(`Role must be one of: ${SWITCH_ROLES.join(', ')}`);
-  if (heightU !== 1 && heightU !== 2) problems.push('Height must be 1U or 2U');
+  if (!heightOpt) problems.push('Height must be 1U, 1U with duct, 1.2U with duct, 2U, or 2U with duct');
   const parsed = parseLocation(locationRaw);
   if (!parsed || parsed.rackNumber == null || parsed.ru == null) {
     problems.push('Location must include Rack<N> and RU<N>, e.g. "DC1 Prod_Rack1 RU18"');
   }
-  return { problems, value: { name, makeModel, ip, serial, locationRaw, role, heightU } };
+  return { problems, value: { name, makeModel, ip, serial, locationRaw, role, heightU, duct, heightLabel: heightOpt?.label ?? null } };
 }
 
 app.post('/api/switches', express.json({ limit: '16kb' }), (req, res) => {
@@ -475,6 +492,29 @@ app.post('/api/switches', express.json({ limit: '16kb' }), (req, res) => {
     saveModels(models);
   }
   res.json({ added: { name: value.name, makeModel: value.makeModel, role: value.role } });
+});
+
+// Update a switch by array index (same index addressing as DELETE). The
+// replacement body is validated exactly like a new switch, so an edit can
+// never store a value that add could not.
+app.put('/api/switches/:index', express.json({ limit: '16kb' }), (req, res) => {
+  const i = Number(req.params.index);
+  const switches = loadSwitches();
+  if (!Number.isInteger(i) || i < 0 || i >= switches.length) {
+    return res.status(404).json({ error: 'Switch not found' });
+  }
+  const { problems, value } = validateSwitch(req.body ?? {});
+  if (problems.length > 0) return res.status(400).json({ error: problems.join('; ') });
+  switches[i] = value;
+  saveSwitches(switches);
+
+  const models = loadModels();
+  if (!models.some((m) => String(m).toLowerCase() === value.makeModel.toLowerCase())) {
+    models.push(value.makeModel);
+    models.sort((a, b) => a.localeCompare(b));
+    saveModels(models);
+  }
+  res.json({ updated: { name: value.name, makeModel: value.makeModel, role: value.role } });
 });
 
 // Bulk switch import. Upload size is capped (256kb); each row is normalized

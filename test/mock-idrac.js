@@ -3,7 +3,8 @@
 // Serves a self-signed HTTPS Redfish API. Location can be provided either via
 // the canonical Chassis Location.Info (MOCK_CHASSIS_INFO) or via an OEM field
 // on the System (MOCK_LOCATION) to exercise the defensive string-walk fallback.
-// Configure via env: MOCK_TAG, MOCK_MODEL, MOCK_LOCATION, MOCK_CHASSIS_INFO.
+// Configure via env: MOCK_TAG, MOCK_MODEL, MOCK_LOCATION, MOCK_CHASSIS_INFO,
+// MOCK_CPUS, MOCK_CPU_MODEL, MOCK_THREADS, MOCK_RAM_GIB.
 import https from 'node:https';
 import fs from 'node:fs';
 
@@ -11,6 +12,10 @@ const TAG = process.env.MOCK_TAG ?? 'MOCKTAG1';
 const MODEL = process.env.MOCK_MODEL ?? 'PowerEdge R740';
 const LOCATION = process.env.MOCK_LOCATION ?? '';
 const CHASSIS_INFO = process.env.MOCK_CHASSIS_INFO ?? ';;;;0';
+const CPUS = Number(process.env.MOCK_CPUS ?? 2);
+const CPU_MODEL = process.env.MOCK_CPU_MODEL ?? 'Intel Xeon Gold 6130';
+const THREADS = Number(process.env.MOCK_THREADS ?? 32);
+const RAM_GIB = Number(process.env.MOCK_RAM_GIB ?? 256);
 
 const routes = {
   '/redfish/v1': {
@@ -23,6 +28,8 @@ const routes = {
   [`/redfish/v1/Systems/${TAG}`]: {
     Id: TAG,
     Model: MODEL,
+    ProcessorSummary: { Count: CPUS, Model: CPU_MODEL, LogicalProcessorCount: THREADS },
+    MemorySummary: { TotalSystemMemoryGiB: RAM_GIB },
     Links: { Chassis: [{ '@odata.id': `/redfish/v1/Chassis/${TAG}` }] },
     Oem: { Dell: { SystemLocation: LOCATION } },
   },
