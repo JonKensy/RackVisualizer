@@ -1,13 +1,14 @@
 {
   "name": "powerflex-rack-visualizer",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test test/*-test.js"
   },
   "dependencies": {
     "cookie-session": "^2.1.1",

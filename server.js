@@ -39,6 +39,8 @@ import cookieSession from 'cookie-session';
 import { fetchHostSystem, fetchHostLldp, verifyHost } from './lib/redfish.js';
 import { buildServer, buildRacks, parseLocation, decodeLldpId } from './lib/parse.js';
 import { loadOrCreateSecret, ensureDefaultUsers, authenticate, hashPassword, verifyPassword, SESSION_MAX_AGE_MS } from './lib/auth.js';
+import { loadOrCreateKey, encryptSecret, decryptSecret } from './lib/crypto.js';
+import { fetchIdracHosts } from './lib/powerflex.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 8080;
@@ -52,6 +54,10 @@ const MODELS_PATH = path.join(DATA_DIR, 'switch-models.json');
 const SWITCH_MACS_PATH = path.join(DATA_DIR, 'switch-macs.json');
 const SETTINGS_PATH = path.join(DATA_DIR, 'settings.json');
 const USERS_PATH = path.join(DATA_DIR, 'users.json');
+const POWERFLEX_HOSTS_PATH = path.join(DATA_DIR, 'powerflex-hosts.json');
+// Key for encrypting the PowerFlex/iDRAC passwords stored in settings.json
+// (see lib/crypto.js). Generated once with 0600, like the session secret.
+const ENC_KEY = loadOrCreateKey(path.join(DATA_DIR, '.enc_key'));
 
 // TLS cert/key are mounted read-only from ./certs; their presence decides
 // whether the app serves HTTPS (and whether the session cookie is Secure).
@@ -104,20 +110,65 @@ const saveModels = (list) => saveList(MODELS_PATH, list);
 const loadSwitchMacs = () => loadList(SWITCH_MACS_PATH);
 const saveSwitchMacs = (list) => saveList(SWITCH_MACS_PATH, list);
 
-// App-level toggles. LLDP collection is on by default; disabling it stops the
-// app from querying iDRACs for NIC-to-switch connectivity on hover.
+// App-level toggles and connection settings. LLDP collection is on by
+// default; disabling it stops the app from querying iDRACs for NIC-to-switch
+// connectivity on hover. powerflexEnabled switches the host source from
+// servers.json to the PowerFlex-discovered list. *PassEnc fields hold
+// AES-256-GCM blobs (lib/crypto.js) — plaintext passwords are never stored.
 function loadSettings() {
+  const blank = {
+    lldpEnabled: true,
+    powerflexEnabled: false,
+    powerflexUrl: '',
+    powerflexUser: '',
+    powerflexPassEnc: '',
+    powerflexLoginPath: '',
+    powerflexResourcesPath: '',
+    idracUser: '',
+    idracPassEnc: '',
+  };
   try {
     const s = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
-    return { lldpEnabled: s.lldpEnabled !== false };
+    return {
+      ...blank,
+      lldpEnabled: s.lldpEnabled !== false,
+      powerflexEnabled: s.powerflexEnabled === true,
+      powerflexUrl: String(s.powerflexUrl ?? ''),
+      powerflexUser: String(s.powerflexUser ?? ''),
+      powerflexPassEnc: String(s.powerflexPassEnc ?? ''),
+      powerflexLoginPath: String(s.powerflexLoginPath ?? ''),
+      powerflexResourcesPath: String(s.powerflexResourcesPath ?? ''),
+      idracUser: String(s.idracUser ?? ''),
+      idracPassEnc: String(s.idracPassEnc ?? ''),
+    };
   } catch {
-    return { lldpEnabled: true };
+    return blank;
   }
+}
+
+// Settings fields safe to send to the browser: everything except the
+// encrypted password blobs (presence is exposed as has*Password booleans).
+function publicSettings(s) {
+  return {
+    lldpEnabled: s.lldpEnabled,
+    powerflexEnabled: s.powerflexEnabled,
+    powerflexUrl: s.powerflexUrl,
+    powerflexUser: s.powerflexUser,
+    powerflexLoginPath: s.powerflexLoginPath,
+    powerflexResourcesPath: s.powerflexResourcesPath,
+    idracUser: s.idracUser,
+    hasPowerflexPassword: Boolean(s.powerflexPassEnc),
+    hasIdracPassword: Boolean(s.idracPassEnc),
+  };
 }
 function saveSettings(settings) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2) + '\n');
+  // 0600: settings.json now holds encrypted password blobs.
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2) + '\n', { mode: 0o600 });
 }
+
+const loadPfxHosts = () => loadList(POWERFLEX_HOSTS_PATH);
+const savePfxHosts = (list) => saveList(POWERFLEX_HOSTS_PATH, list);
 
 // Accepts any common MAC notation (colon, dash, dot, or bare hex) and
 // normalizes to lowercase colon-separated pairs; null when not 12 hex digits.
@@ -130,10 +181,15 @@ function normalizeMac(raw) {
 // Merges the admin file with user-added hosts, deduped case-insensitively.
 // Only hosts that passed validHost() (or came from the admin file) reach the
 // Redfish client, so credentials are only ever sent to vetted addresses.
+// With PowerFlex discovery enabled, the discovered PowerFlex list replaces
+// servers.json + manual nodes entirely (switches are appended separately).
 function allHosts() {
+  const sources = loadSettings().powerflexEnabled
+    ? loadPfxHosts().map((d) => d.host)
+    : [...loadServers().map((s) => s.host), ...loadDiscovered().map((d) => d.host)];
   const seen = new Set();
   const hosts = [];
-  for (const h of [...loadServers().map((s) => s.host), ...loadDiscovered().map((d) => d.host)]) {
+  for (const h of sources) {
     const key = String(h).toLowerCase();
     if (!seen.has(key)) {
       seen.add(key);
@@ -141,6 +197,19 @@ function allHosts() {
     }
   }
   return hosts;
+}
+
+// iDRAC credentials: Settings-page values take precedence over the
+// IDRAC_USER/IDRAC_PASSWORD env fallback. The stored password is decrypted
+// per request; a corrupt blob or missing key falls back to env rather than
+// failing the whole page.
+function idracCreds() {
+  const s = loadSettings();
+  if (s.idracUser) {
+    const pass = decryptSecret(ENC_KEY, s.idracPassEnc);
+    if (pass != null) return { user: s.idracUser, pass };
+  }
+  return { user: process.env.IDRAC_USER, pass: process.env.IDRAC_PASSWORD };
 }
 
 // Hostname/IP allowlist. These values are interpolated into outbound
@@ -346,10 +415,11 @@ app.get('/api/racks', async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 
-  // iDRAC credentials come from env (.env) and are only sent to hosts from
-  // the admin file or the validated discovered list. allSettled keeps one
-  // unreachable host from failing the whole page.
-  const creds = { user: process.env.IDRAC_USER, pass: process.env.IDRAC_PASSWORD };
+  // iDRAC credentials come from Settings (encrypted) or env (.env) and are
+  // only sent to hosts from the admin file, the validated discovered list,
+  // or the PowerFlex refresh. allSettled keeps one unreachable host from
+  // failing the whole page.
+  const creds = idracCreds();
   const results = await Promise.allSettled(hosts.map((host) => fetchHostSystem(host, creds)));
 
   const records = [];
@@ -456,18 +526,113 @@ app.post(
   },
 );
 
-// App-level toggles shown on the Settings page.
+// App-level toggles and connection settings shown on the Settings page.
+// GET never returns stored passwords — only has*Password booleans. POST
+// accepts partial updates; a blank password field means "keep unchanged",
+// and the *PasswordClear flags remove a stored password explicitly.
 app.get('/api/settings', (req, res) => {
-  res.json(loadSettings());
+  res.json(publicSettings(loadSettings()));
 });
 
 app.post('/api/settings', express.json({ limit: '16kb' }), (req, res) => {
-  if (typeof req.body?.lldpEnabled !== 'boolean') {
-    return res.status(400).json({ error: 'lldpEnabled must be a boolean' });
+  const body = req.body ?? {};
+  const settings = loadSettings();
+
+  if (body.lldpEnabled !== undefined) {
+    if (typeof body.lldpEnabled !== 'boolean') return res.status(400).json({ error: 'lldpEnabled must be a boolean' });
+    settings.lldpEnabled = body.lldpEnabled;
   }
-  const settings = { ...loadSettings(), lldpEnabled: req.body.lldpEnabled };
+  if (body.powerflexEnabled !== undefined) {
+    if (typeof body.powerflexEnabled !== 'boolean') return res.status(400).json({ error: 'powerflexEnabled must be a boolean' });
+    settings.powerflexEnabled = body.powerflexEnabled;
+  }
+  if (body.powerflexUrl !== undefined) {
+    const url = String(body.powerflexUrl).trim();
+    if (url) {
+      let parsed;
+      try {
+        parsed = new URL(url);
+      } catch {
+        return res.status(400).json({ error: 'PowerFlex URL must be a valid https:// URL' });
+      }
+      if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+        return res.status(400).json({ error: 'PowerFlex URL must be https with no embedded credentials' });
+      }
+      if (!validHost(parsed.hostname)) return res.status(400).json({ error: 'PowerFlex hostname contains invalid characters' });
+    }
+    settings.powerflexUrl = url;
+  }
+  for (const field of ['powerflexLoginPath', 'powerflexResourcesPath']) {
+    if (body[field] !== undefined) {
+      const p = String(body[field]).trim();
+      if (p && (!p.startsWith('/') || p.length > 200)) {
+        return res.status(400).json({ error: `${field} must start with "/" (max 200 chars)` });
+      }
+      settings[field] = p;
+    }
+  }
+  for (const field of ['powerflexUser', 'idracUser']) {
+    if (body[field] !== undefined) {
+      const v = String(body[field]).trim();
+      if (v.length > 100) return res.status(400).json({ error: `${field} is too long (max 100 chars)` });
+      settings[field] = v;
+    }
+  }
+  if (typeof body.powerflexPassword === 'string' && body.powerflexPassword) {
+    settings.powerflexPassEnc = encryptSecret(ENC_KEY, body.powerflexPassword);
+  }
+  if (body.powerflexPasswordClear === true) settings.powerflexPassEnc = '';
+  if (typeof body.idracPassword === 'string' && body.idracPassword) {
+    settings.idracPassEnc = encryptSecret(ENC_KEY, body.idracPassword);
+  }
+  if (body.idracPasswordClear === true) settings.idracPassEnc = '';
+
   saveSettings(settings);
-  res.json(settings);
+  res.json(publicSettings(settings));
+});
+
+// Manual PowerFlex discovery refresh. Contacts the configured appliance,
+// replaces powerflex-hosts.json only on success, and reports how many
+// entries were kept vs rejected (invalid/unmappable addresses).
+app.post('/api/powerflex/refresh', async (req, res) => {
+  const s = loadSettings();
+  if (!s.powerflexEnabled) {
+    return res.status(409).json({ error: 'PowerFlex discovery is disabled (enable it in Settings)' });
+  }
+  if (!s.powerflexUrl || !s.powerflexUser || !s.powerflexPassEnc) {
+    return res.status(409).json({ error: 'PowerFlex URL, username, and password must be set in Settings' });
+  }
+  const password = decryptSecret(ENC_KEY, s.powerflexPassEnc);
+  if (password == null) {
+    return res.status(409).json({ error: 'Stored PowerFlex password could not be decrypted (data/.enc_key may have changed)' });
+  }
+  try {
+    const { hosts, rejected, total } = await fetchIdracHosts({
+      url: s.powerflexUrl,
+      user: s.powerflexUser,
+      password,
+      loginPath: s.powerflexLoginPath || undefined,
+      resourcesPath: s.powerflexResourcesPath || undefined,
+      validHost,
+    });
+    const capped = hosts.slice(0, 500);
+    savePfxHosts(capped);
+    res.json({
+      ok: true,
+      total,
+      kept: capped.length,
+      rejected: rejected.length,
+      truncated: hosts.length > capped.length,
+      discoveredAt: capped[0]?.discoveredAt ?? null,
+    });
+  } catch (err) {
+    res.status(502).json({ error: `PowerFlex query failed: ${err.message}` });
+  }
+});
+
+// Cached PowerFlex discovery results for the Settings page.
+app.get('/api/powerflex/hosts', (req, res) => {
+  res.json({ hosts: loadPfxHosts() });
 });
 
 // Static switch MAC → friendly-name map. MACs are normalized on store so
@@ -512,7 +677,7 @@ app.get('/api/nodes/:host/lldp', async (req, res) => {
   if (!validHost(host) || !allHosts().some((h) => h.toLowerCase() === host.toLowerCase())) {
     return res.status(404).json({ error: 'Unknown host' });
   }
-  const creds = { user: process.env.IDRAC_USER, pass: process.env.IDRAC_PASSWORD };
+  const creds = idracCreds();
   try {
     const systemData = await fetchHostSystem(host, creds);
     const systemOdataId = systemData.system['@odata.id'] ?? `/redfish/v1/Systems/${systemData.serviceTag}`;
