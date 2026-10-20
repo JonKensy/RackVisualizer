@@ -211,7 +211,13 @@ All pages and API endpoints require login.
 
 ## Behavior
 
-- Hover a server: iDRAC hostname + service tag. Click: opens the iDRAC in a new tab.
+- Hover a server: iDRAC hostname + service tag, plus LLDP connectivity read
+  from the iDRAC (each NIC port → switch port and switch chassis ID, with link
+  speed). LLDP data is fetched lazily on first hover via
+  `GET /api/nodes/<host>/lldp` and cached for 60 seconds per host. Click:
+  opens the iDRAC in a new tab.
+- Switch chassis MACs are labeled with friendly names when they match an entry
+  in **Settings → Switch MAC to Name** (see below).
 - Racks are grouped by datacenter + environment (e.g. `DC1 Prod`). A dropdown in
   the header switches between environments; the selection is reflected in the URL
   hash, so an environment can be bookmarked.
@@ -235,7 +241,8 @@ sections:
   entered manually: Make/Model, Switch name, IP address, Serial number,
   Location (same format as iDRAC, e.g. `DC1 Prod_Rack1 RU18`), Role
   (Leaf A / Leaf B / Border Leaf A / Border Leaf B / Management Agg A /
-  Management Agg B / Spine A / Spine B / Spine C), and Height (1U or 2U).
+  Management Agg B / Management / Spine A / Spine B / Spine C), and Height
+  (1U, 2U, or 1.25U with Duct — the duct option takes 2U in the rack).
   Make/Model values you have entered before appear as autocomplete suggestions
   (kept in `data/switch-models.json`), so repeat models only need picking from
   the list. The Role dropdown is auto-selected from the switch name when it
@@ -247,15 +254,35 @@ sections:
   `Switch name`, `IP address`, `Serial number`, `Location`, `Role`, `Height`
   columns — **Download example CSV** fetches a ready-made template
   (`public/switches-example.csv`). Role matching is case-insensitive, Height
-  accepts `1`/`2`/`1U`/`2U`, and rows whose switch name is already configured
-  are skipped.
+  accepts `1`/`2`/`1U`/`2U`/`1.25U` (1.25U with duct counts as 2U), and rows
+  whose switch name is already configured are skipped.
 - **Current entries** — lists everything configured. Discovered iDRAC hosts and
-  network devices have a **Remove** button; `servers.json` hosts are edited by
+  network devices have a **Remove** button; network devices also have an
+  **Edit** button that loads the device into the "Add network device" form
+  (the button becomes **Save changes**, with **Cancel edit** to back out) and
+  updates it in place via `PUT /api/switches/<index>` — renaming a device to
+  an existing switch name is rejected. `servers.json` hosts are edited by
   changing the file itself.
 
 Added iDRAC hosts persist to `data/discovered.json` and switches to
 `data/switches.json` (both on the writable `./data` volume), merged with
 `servers.json` on every load.
+
+## Settings page
+
+The **Settings** button in the header opens a page with two sections.
+
+- **LLDP collection** — a global enable/disable toggle (persisted to
+  `data/settings.json`, enabled by default). When off, the app makes no LLDP
+  Redfish queries at all: the UI skips the hover fetch and the
+  `/api/nodes/<host>/lldp` endpoint rejects requests with 409.
+- **Switch MAC to Name** — a static list mapping switch MAC addresses to friendly names,
+persisted to `data/switch-macs.json`. Any common MAC notation (colons, dashes,
+Cisco dots, or bare hex) is accepted and normalized to lowercase
+colon-separated form, so it matches whatever the iDRAC's LLDP reports. When a
+switch chassis MAC in an LLDP tooltip matches an entry, the tooltip shows the
+friendly name (`Ethernet20 @ leaf-01`) and hides the MAC; unmapped chassis
+still show the bare MAC.
 
 In the rack, switches render as teal blocks labeled `Make/Model · Role`
 (e.g. `Cisco 93180YC-FX3 · Leaf`); hover shows name, IP, serial, and position.

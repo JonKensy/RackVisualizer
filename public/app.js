@@ -193,7 +193,32 @@ function renderCard(server, className) {
   return card;
 }
 
+// LLDP neighbor info is fetched lazily on first hover of a server and cached
+// per host for the page lifetime; the tooltip re-renders when it arrives.
+// Collection can be turned off globally in Settings; the flag is read once at
+// page load and the backend also rejects LLDP requests while it is off.
+const lldpCache = new Map();
+let tooltipServer = null;
+let lldpEnabled = true;
+
+async function loadSettings() {
+  try {
+    const res = await fetch('/api/settings');
+    if (res.ok) lldpEnabled = (await res.json()).lldpEnabled !== false;
+  } catch {
+    // Keep the default (enabled) if the settings API is unreachable.
+  }
+}
+
 function showTooltip(e, server) {
+  tooltipServer = server;
+  renderTooltip(server);
+  tooltip.hidden = false;
+  moveTooltip(e);
+  if (server.kind !== 'switch' && lldpEnabled && !lldpCache.has(server.host)) loadLldp(server.host);
+}
+
+function renderTooltip(server) {
   const lines = server.kind === 'switch'
     ? [
         server.name,
@@ -209,11 +234,42 @@ function showTooltip(e, server) {
         `Model: ${server.model ?? 'unknown'}`,
         `Position: RU${server.ru} (${server.heightU}U)`,
       ];
+  if (server.kind !== 'switch') lines.push(...lldpLines(server));
   if (server.overlap) lines.push('WARNING: overlaps another device');
   for (const w of server.warnings) if (w !== 'unknown model') lines.push(`Note: ${w}`);
   tooltip.textContent = lines.join('\n');
-  tooltip.hidden = false;
-  moveTooltip(e);
+}
+
+async function loadLldp(host) {
+  lldpCache.set(host, { loading: true });
+  if (tooltipServer?.host === host) renderTooltip(tooltipServer);
+  try {
+    const res = await fetch(`/api/nodes/${encodeURIComponent(host)}/lldp`);
+    const data = await res.json().catch(() => ({}));
+    lldpCache.set(host, res.ok ? { ports: data.ports ?? [] } : { error: data.error ?? `HTTP ${res.status}` });
+  } catch (err) {
+    lldpCache.set(host, { error: err.message });
+  }
+  if (tooltipServer?.host === host) renderTooltip(tooltipServer);
+}
+
+function lldpLines(server) {
+  const entry = lldpCache.get(server.host);
+  if (!entry) return [];
+  if (entry.loading) return ['LLDP: querying…'];
+  if (entry.error) return [`LLDP: ${entry.error}`];
+  if (entry.ports.length === 0) return ['LLDP: no NIC ports reported'];
+  const lines = ['LLDP (NIC port → switch port):'];
+  for (const p of entry.ports) {
+    if (!p.lldp) {
+      lines.push(`  ${p.portId}: no neighbor (${p.linkStatus ?? 'unknown'})`);
+      continue;
+    }
+    const speed = p.speedGbps ? ` · ${p.speedGbps}Gbps` : '';
+    const chassis = p.lldp.chassisName ?? p.lldp.chassisId;
+    lines.push(`  ${p.portId} → ${p.lldp.portId} @ ${chassis}${speed}`);
+  }
+  return lines;
 }
 
 function moveTooltip(e) {
@@ -232,4 +288,5 @@ function hideTooltip() {
 }
 
 document.getElementById('refresh').addEventListener('click', load);
+loadSettings();
 load();

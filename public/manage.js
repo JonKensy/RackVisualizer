@@ -161,7 +161,37 @@ swRoleSelect.addEventListener('change', () => {
   swRoleHint.hidden = true;
 });
 
-document.getElementById('add-switch-form').addEventListener('submit', async (e) => {
+// The add-device form doubles as the edit form: clicking Edit on a network
+// device loads it here (editingIndex set), and submit then PUTs the change.
+const swForm = document.getElementById('add-switch-form');
+const swSubmitBtn = document.getElementById('sw-submit');
+const swCancelBtn = document.getElementById('sw-cancel');
+let editingIndex = null;
+
+function setEditing(index, sw) {
+  editingIndex = index;
+  if (sw) {
+    document.getElementById('sw-make').value = sw.makeModel;
+    swNameInput.value = sw.name;
+    document.getElementById('sw-ip').value = sw.ip;
+    document.getElementById('sw-serial').value = sw.serial;
+    document.getElementById('sw-location').value = sw.locationRaw;
+    swRoleSelect.value = sw.role;
+    document.getElementById('sw-height').value = String(sw.heightU);
+    swRoleHint.hidden = true;
+    swSubmitBtn.textContent = 'Save changes';
+    swCancelBtn.hidden = false;
+    swForm.scrollIntoView({ block: 'center' });
+  } else {
+    swForm.reset();
+    swSubmitBtn.textContent = 'Add device';
+    swCancelBtn.hidden = true;
+  }
+}
+
+swCancelBtn.addEventListener('click', () => setEditing(null));
+
+swForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const body = {
     makeModel: document.getElementById('sw-make').value.trim(),
@@ -173,24 +203,45 @@ document.getElementById('add-switch-form').addEventListener('submit', async (e) 
     heightU: Number(document.getElementById('sw-height').value),
   };
   try {
-    const res = await fetch('/api/switches', {
-      method: 'POST',
+    const res = await fetch(editingIndex === null ? '/api/switches' : `/api/switches/${editingIndex}`, {
+      method: editingIndex === null ? 'POST' : 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     if (res.status === 401) { redirectToLogin(); return; }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-    setStatus(`Added ${data.added.makeModel} (${data.added.name}).`, 'ok');
-    e.target.reset();
+    const done = editingIndex === null ? data.added : data.updated;
+    setStatus(`${editingIndex === null ? 'Added' : 'Updated'} ${done.makeModel} (${done.name}).`, 'ok');
+    setEditing(null);
     loadManaged();
   } catch (err) {
-    setStatus(`Could not add device: ${err.message}`, 'error');
+    setStatus(`Could not ${editingIndex === null ? 'add' : 'update'} device: ${err.message}`, 'error');
   }
 });
 
 const switchCsvInput = document.getElementById('switch-csv-file');
 document.getElementById('import-switch-csv').addEventListener('click', () => switchCsvInput.click());
+
+// Chrome refuses network downloads from origins with an untrusted TLS cert
+// ("Failed - Network error") even after the warning was bypassed, so fetch
+// the template like any other same-origin request and save it from a local
+// blob URL instead.
+document.getElementById('download-example-csv').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/switches-example.csv');
+    if (res.status === 401) { redirectToLogin(); return; }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'switches-example.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    setStatus(`Could not download template: ${err.message}`, 'error');
+  }
+});
 switchCsvInput.addEventListener('change', async () => {
   const file = switchCsvInput.files[0];
   if (!file) return;
@@ -248,14 +299,25 @@ function renderGroup(title, items) {
     const label = document.createElement('span');
     label.textContent = item.label;
     row.appendChild(label);
+    const actions = document.createElement('span');
+    actions.className = 'managed-actions';
+    if (item.editIndex !== undefined) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'row-edit';
+      btn.textContent = 'Edit';
+      btn.addEventListener('click', () => setEditing(item.editIndex, item.switch));
+      actions.appendChild(btn);
+    }
     if (item.removeUrl) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'row-remove';
       btn.textContent = 'Remove';
       btn.addEventListener('click', () => removeEntry(item.removeUrl, item.label));
-      row.appendChild(btn);
+      actions.appendChild(btn);
     }
+    if (actions.childNodes.length > 0) row.appendChild(actions);
     group.appendChild(row);
   }
   return group;
@@ -287,6 +349,8 @@ async function loadManaged() {
       data.switches.map((s, i) => ({
         label: `${s.makeModel} · ${s.name} · ${s.role} · ${s.locationRaw} · ${s.heightU}U`,
         removeUrl: `/api/switches/${i}`,
+        editIndex: i,
+        switch: s,
       }))));
   } catch (err) {
     listEl.textContent = `Failed to load entries: ${err.message}`;

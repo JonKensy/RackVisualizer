@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings — Rack Visualizer</title>
+  <!-- Auth-gated page. Every mutation posts to an /api/* endpoint that
+       validates its input server-side; the form fields here are UX only. -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Settings</h1>
+    <div class="header-actions">
+      <a class="button-link" href="/">Back to racks</a>
+      <div class="account-menu">
+        <button type="button" class="account-toggle" aria-haspopup="true" aria-expanded="false">Account ▾</button>
+        <div class="account-dropdown" hidden>
+          <a href="/change-password">Change password</a>
+          <a href="/logout">Log out</a>
+        </div>
+      </div>
+    </div>
+  </header>
+  <div id="action-status" role="status" aria-live="polite"></div>
+  <main class="manage-main">
+    <section class="manage-section">
+      <h2>LLDP collection</h2>
+      <label class="toggle-row">
+        <input id="lldp-enabled" type="checkbox">
+        Enable LLDP information collection
+      </label>
+      <p class="hint">
+        When enabled, hovering a server queries its iDRAC for NIC-to-switch
+        LLDP connectivity (one Redfish walk per host, cached 60 seconds).
+        Turn this off if you do not need the connectivity data — no iDRAC
+        LLDP requests are then made.
+      </p>
+    </section>
+
+    <section class="manage-section">
+      <h2>Switch MAC to Name</h2>
+      <form id="add-mac-form">
+        <label>Switch MAC address <input id="mac-address" type="text" placeholder="00:1c:73:0f:64:a2" autocomplete="off" spellcheck="false" required></label>
+        <label>Friendly name <input id="mac-name" type="text" placeholder="leaf-01" autocomplete="off" required></label>
+        <button type="submit">Add mapping</button>
+      </form>
+      <p class="hint">
+        LLDP tooltips show the friendly name when the switch chassis MAC
+        reported by the iDRAC matches an entry here. Any common MAC notation
+        (colons, dashes, dots, or bare hex) is accepted and normalized.
+      </p>
+      <h3>Current mappings</h3>
+      <div id="mac-list"></div>
+    </section>
+  </main>
+  <script src="account.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>

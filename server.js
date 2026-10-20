@@ -36,8 +36,8 @@ import https from 'node:https';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cookieSession from 'cookie-session';
-import { fetchHostSystem, verifyHost } from './lib/redfish.js';
-import { buildServer, buildRacks, parseLocation } from './lib/parse.js';
+import { fetchHostSystem, fetchHostLldp, verifyHost } from './lib/redfish.js';
+import { buildServer, buildRacks, parseLocation, decodeLldpId } from './lib/parse.js';
 import { loadOrCreateSecret, ensureDefaultUsers, authenticate, hashPassword, verifyPassword, SESSION_MAX_AGE_MS } from './lib/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -49,6 +49,8 @@ const DATA_DIR = process.env.DATA_DIR || (fs.existsSync('/app/data') ? '/app/dat
 const DISCOVERED_PATH = path.join(DATA_DIR, 'discovered.json');
 const SWITCHES_PATH = path.join(DATA_DIR, 'switches.json');
 const MODELS_PATH = path.join(DATA_DIR, 'switch-models.json');
+const SWITCH_MACS_PATH = path.join(DATA_DIR, 'switch-macs.json');
+const SETTINGS_PATH = path.join(DATA_DIR, 'settings.json');
 const USERS_PATH = path.join(DATA_DIR, 'users.json');
 
 // TLS cert/key are mounted read-only from ./certs; their presence decides
@@ -99,6 +101,31 @@ const loadSwitches = () => loadList(SWITCHES_PATH);
 const saveSwitches = (list) => saveList(SWITCHES_PATH, list);
 const loadModels = () => loadList(MODELS_PATH);
 const saveModels = (list) => saveList(MODELS_PATH, list);
+const loadSwitchMacs = () => loadList(SWITCH_MACS_PATH);
+const saveSwitchMacs = (list) => saveList(SWITCH_MACS_PATH, list);
+
+// App-level toggles. LLDP collection is on by default; disabling it stops the
+// app from querying iDRACs for NIC-to-switch connectivity on hover.
+function loadSettings() {
+  try {
+    const s = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
+    return { lldpEnabled: s.lldpEnabled !== false };
+  } catch {
+    return { lldpEnabled: true };
+  }
+}
+function saveSettings(settings) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2) + '\n');
+}
+
+// Accepts any common MAC notation (colon, dash, dot, or bare hex) and
+// normalizes to lowercase colon-separated pairs; null when not 12 hex digits.
+function normalizeMac(raw) {
+  const hex = String(raw ?? '').replace(/[^0-9A-Fa-f]/g, '');
+  if (hex.length !== 12) return null;
+  return (hex.match(/.{2}/g) ?? []).join(':').toLowerCase();
+}
 
 // Merges the admin file with user-added hosts, deduped case-insensitively.
 // Only hosts that passed validHost() (or came from the admin file) reach the
@@ -228,6 +255,15 @@ app.use((req, res, next) => {
   res.redirect(303, `/login?next=${encodeURIComponent(safeNext(req.originalUrl))}`);
 });
 
+// The example CSV is fetched via a <download> link. express.static would
+// answer Chrome's revalidation with a bodiless 304, which Chrome's download
+// pipeline treats as a failed transfer — so serve it fresh every time.
+app.get('/switches-example.csv', (req, res) => {
+  res.set('Content-Disposition', 'attachment; filename="switches-example.csv"');
+  res.set('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'public', 'switches-example.csv'), { etag: false, lastModified: false });
+});
+
 // Static assets are served AFTER the auth gate, so pages and JS are not
 // reachable anonymously (only /styles.css is public, for the login page).
 app.use(express.static(path.join(__dirname, 'public')));
@@ -271,6 +307,10 @@ app.get('/api/account', (req, res) => {
 
 app.get('/change-password', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'change-password.html'));
+});
+
+app.get('/settings', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'settings.html'));
 });
 
 // Password change: requires knowledge of the current password, enforces a
@@ -417,7 +457,89 @@ app.post(
   },
 );
 
-const SWITCH_ROLES = ['Leaf A', 'Leaf B', 'Border Leaf A', 'Border Leaf B', 'Management Agg A', 'Management Agg B', 'Spine A', 'Spine B', 'Spine C'];
+// App-level toggles shown on the Settings page.
+app.get('/api/settings', (req, res) => {
+  res.json(loadSettings());
+});
+
+app.post('/api/settings', express.json({ limit: '16kb' }), (req, res) => {
+  if (typeof req.body?.lldpEnabled !== 'boolean') {
+    return res.status(400).json({ error: 'lldpEnabled must be a boolean' });
+  }
+  const settings = { ...loadSettings(), lldpEnabled: req.body.lldpEnabled };
+  saveSettings(settings);
+  res.json(settings);
+});
+
+// Static switch MAC → friendly-name map. MACs are normalized on store so
+// lookups match any notation the iDRAC reports.
+app.get('/api/switch-macs', (req, res) => {
+  res.json({ switchMacs: loadSwitchMacs() });
+});
+
+app.post('/api/switch-macs', express.json({ limit: '16kb' }), (req, res) => {
+  const mac = normalizeMac(req.body?.mac);
+  const name = String(req.body?.name ?? '').trim();
+  if (!mac) return res.status(400).json({ error: 'Invalid MAC address (expected 12 hex digits)' });
+  if (!name || name.length > 100) return res.status(400).json({ error: 'Switch name is required (max 100 chars)' });
+  const list = loadSwitchMacs();
+  if (list.some((m) => String(m.mac).toLowerCase() === mac)) {
+    return res.status(409).json({ error: `${mac} is already mapped` });
+  }
+  list.push({ mac, name });
+  saveSwitchMacs(list);
+  res.json({ added: { mac, name } });
+});
+
+app.delete('/api/switch-macs/:index', (req, res) => {
+  const i = Number(req.params.index);
+  const list = loadSwitchMacs();
+  if (!Number.isInteger(i) || i < 0 || i >= list.length) {
+    return res.status(404).json({ error: 'Mapping not found' });
+  }
+  const [removed] = list.splice(i, 1);
+  saveSwitchMacs(list);
+  res.json({ removed: `${removed.mac} → ${removed.name}` });
+});
+
+// LLDP neighbor info for one iDRAC host, fetched lazily on hover and cached
+// (60s TTL) in the Redfish client. The host must already be configured —
+// this endpoint never contacts an arbitrary address.
+app.get('/api/nodes/:host/lldp', async (req, res) => {
+  if (!loadSettings().lldpEnabled) {
+    return res.status(409).json({ error: 'LLDP collection is disabled (enable it in Settings)' });
+  }
+  const host = decodeURIComponent(req.params.host);
+  if (!validHost(host) || !allHosts().some((h) => h.toLowerCase() === host.toLowerCase())) {
+    return res.status(404).json({ error: 'Unknown host' });
+  }
+  const creds = { user: process.env.IDRAC_USER, pass: process.env.IDRAC_PASSWORD };
+  try {
+    const systemData = await fetchHostSystem(host, creds);
+    const systemOdataId = systemData.system['@odata.id'] ?? `/redfish/v1/Systems/${systemData.serviceTag}`;
+    const ports = await fetchHostLldp(host, creds, systemOdataId);
+    const macNames = new Map(loadSwitchMacs().map((m) => [String(m.mac).toLowerCase(), m.name]));
+    res.json({
+      host,
+      ports: ports.map((p) => ({
+        ...p,
+        lldp: p.lldp
+          ? {
+              chassisId: decodeLldpId(p.lldp.ChassisId),
+              chassisIdSubtype: p.lldp.ChassisIdSubtype ?? null,
+              chassisName: macNames.get(normalizeMac(p.lldp.ChassisId) ?? '') ?? null,
+              portId: decodeLldpId(p.lldp.PortId),
+              portIdSubtype: p.lldp.PortIdSubtype ?? null,
+            }
+          : null,
+      })),
+    });
+  } catch (err) {
+    res.status(502).json({ error: `Could not reach ${host}: ${err.message}` });
+  }
+});
+
+const SWITCH_ROLES = ['Leaf A', 'Leaf B', 'Border Leaf A', 'Border Leaf B', 'Management Agg A', 'Management Agg B', 'Management', 'Spine A', 'Spine B', 'Spine C'];
 
 app.get('/api/managed', (req, res) => {
   try {
@@ -435,8 +557,8 @@ app.get('/api/managed', (req, res) => {
 // Central validation for switch input (used by both the form and CSV
 // import): required fields capped at 100 chars, IP checked against the
 // hostname allowlist, role checked against a fixed allowlist, height
-// restricted to 1 or 2, and location must parse to a rack + RU. Values that
-// fail here are never persisted.
+// restricted to 1U/2U (1.25U-with-duct counts as 2U), and location must parse
+// to a rack + RU. Values that fail here are never persisted.
 function validateSwitch(b) {
   const makeModel = String(b.makeModel ?? '').trim();
   const name = String(b.name ?? '').trim();
@@ -444,7 +566,9 @@ function validateSwitch(b) {
   const serial = String(b.serial ?? '').trim();
   const locationRaw = String(b.locationRaw ?? '').trim();
   const role = String(b.role ?? '').trim();
-  const heightU = Number(String(b.heightU ?? '').trim().replace(/u$/i, ''));
+  const heightRaw = String(b.heightU ?? '').trim();
+  // "1.25U with Duct" physically takes 2U in the rack.
+  const heightU = /^1\.25/i.test(heightRaw) ? 2 : Number(heightRaw.replace(/u$/i, ''));
 
   const problems = [];
   if (!makeModel || makeModel.length > 100) problems.push('Make/Model is required');
@@ -452,7 +576,7 @@ function validateSwitch(b) {
   if (!validHost(ip)) problems.push('IP address is invalid');
   if (!serial || serial.length > 100) problems.push('Serial number is required');
   if (!SWITCH_ROLES.includes(role)) problems.push(`Role must be one of: ${SWITCH_ROLES.join(', ')}`);
-  if (heightU !== 1 && heightU !== 2) problems.push('Height must be 1U or 2U');
+  if (heightU !== 1 && heightU !== 2) problems.push('Height must be 1U, 2U, or 1.25U with Duct (2U)');
   const parsed = parseLocation(locationRaw);
   if (!parsed || parsed.rackNumber == null || parsed.ru == null) {
     problems.push('Location must include Rack<N> and RU<N>, e.g. "DC1 Prod_Rack1 RU18"');
@@ -517,6 +641,31 @@ app.post(
     res.json(results);
   },
 );
+
+// Edit a switch in place by array index. Same validation as add; a renamed
+// switch must not collide with another entry's name.
+app.put('/api/switches/:index', express.json({ limit: '16kb' }), (req, res) => {
+  const i = Number(req.params.index);
+  const switches = loadSwitches();
+  if (!Number.isInteger(i) || i < 0 || i >= switches.length) {
+    return res.status(404).json({ error: 'Switch not found' });
+  }
+  const { problems, value } = validateSwitch(req.body ?? {});
+  if (problems.length > 0) return res.status(400).json({ error: problems.join('; ') });
+  if (switches.some((s, j) => j !== i && String(s.name).toLowerCase() === value.name.toLowerCase())) {
+    return res.status(409).json({ error: `A switch named "${value.name}" already exists` });
+  }
+  switches[i] = value;
+  saveSwitches(switches);
+
+  const models = loadModels();
+  if (!models.some((m) => String(m).toLowerCase() === value.makeModel.toLowerCase())) {
+    models.push(value.makeModel);
+    models.sort((a, b) => a.localeCompare(b));
+    saveModels(models);
+  }
+  res.json({ updated: { name: value.name, makeModel: value.makeModel, role: value.role } });
+});
 
 // Remove a switch by array index; the index is bounds-checked so it can
 // only address an existing entry.

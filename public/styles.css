@@ -64,6 +64,8 @@ header h1 { font-size: 1.25rem; margin: 0; }
   padding: 16px;
 }
 .manage-section h2 { margin: 0 0 12px; font-size: 1rem; color: var(--muted); }
+.toggle-row { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer; }
+.toggle-row input { width: 16px; height: 16px; accent-color: var(--server); }
 
 .node-row { display: flex; gap: 8px; margin-bottom: 8px; }
 .node-row input {
@@ -85,6 +87,16 @@ header h1 { font-size: 1.25rem; margin: 0; }
   cursor: pointer;
 }
 .row-remove:hover { border-color: var(--error); color: #ff8a80; }
+.managed-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.row-edit {
+  background: var(--panel);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.row-edit:hover { border-color: var(--server); color: var(--server); }
 .row-actions { display: flex; gap: 8px; margin-top: 12px; }
 .node-row .row-add,
 .node-row .row-remove {
@@ -248,7 +260,6 @@ button:hover { border-color: var(--server); }
   font-size: 0.8rem;
   white-space: pre;
   pointer-events: none;
-  max-width: 360px;
 }
 
 .login-main { display: flex; justify-content: center; padding: 48px 24px; }

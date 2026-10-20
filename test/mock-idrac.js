@@ -22,6 +22,7 @@ const routes = {
   },
   [`/redfish/v1/Systems/${TAG}`]: {
     Id: TAG,
+    '@odata.id': `/redfish/v1/Systems/${TAG}`,
     Model: MODEL,
     Links: { Chassis: [{ '@odata.id': `/redfish/v1/Chassis/${TAG}` }] },
     Oem: { Dell: { SystemLocation: LOCATION } },
@@ -33,6 +34,41 @@ const routes = {
   },
   [`/redfish/v1/Managers/iDRAC.Embedded.1/Oem/Dell/DellAttributes/${TAG}`]: {
     Attributes: { 'SystemInfo.1.SysLocation': LOCATION },
+  },
+  // NetworkAdapters → Ports with LLDPReceive, mirroring real iDRAC9 firmware
+  // (PortId is colon-separated hex of the switch interface name).
+  [`/redfish/v1/Systems/${TAG}/NetworkAdapters`]: {
+    Members: [{ '@odata.id': `/redfish/v1/Chassis/${TAG}/NetworkAdapters/NIC.Slot.1` }],
+  },
+  [`/redfish/v1/Chassis/${TAG}/NetworkAdapters/NIC.Slot.1`]: {
+    Id: 'NIC.Slot.1',
+    Model: 'Mock 10GbE 2P',
+    Ports: { '@odata.id': `/redfish/v1/Chassis/${TAG}/NetworkAdapters/NIC.Slot.1/Ports` },
+  },
+  [`/redfish/v1/Chassis/${TAG}/NetworkAdapters/NIC.Slot.1/Ports`]: {
+    Members: [
+      { '@odata.id': `/redfish/v1/Chassis/${TAG}/NetworkAdapters/NIC.Slot.1/Ports/NIC.Slot.1-1` },
+      { '@odata.id': `/redfish/v1/Chassis/${TAG}/NetworkAdapters/NIC.Slot.1/Ports/NIC.Slot.1-2` },
+    ],
+  },
+  [`/redfish/v1/Chassis/${TAG}/NetworkAdapters/NIC.Slot.1/Ports/NIC.Slot.1-1`]: {
+    Id: 'NIC.Slot.1-1',
+    LinkStatus: 'LinkUp',
+    CurrentSpeedGbps: 10,
+    Ethernet: {
+      AssociatedMACAddresses: ['AA:BB:CC:DD:EE:01'],
+      LLDPReceive: {
+        ChassisId: '00:1c:73:0f:64:a2',
+        ChassisIdSubtype: 'MacAddr',
+        PortId: '45:74:68:65:72:6E:65:74:31',
+        PortIdSubtype: 'IfName',
+      },
+    },
+  },
+  [`/redfish/v1/Chassis/${TAG}/NetworkAdapters/NIC.Slot.1/Ports/NIC.Slot.1-2`]: {
+    Id: 'NIC.Slot.1-2',
+    LinkStatus: 'NoLink',
+    Ethernet: { AssociatedMACAddresses: ['AA:BB:CC:DD:EE:02'] },
   },
 };
 
