@@ -20,11 +20,11 @@ docker compose build
 
 # Tag it with a stable, explicit name (the compose-generated name depends on
 # the directory name, so don't rely on it for transfer)
-docker tag powerflex-visualizer_rack-visualizer:latest rack-visualizer:1.1.1
+docker tag powerflex-visualizer_rack-visualizer:latest rack-visualizer:1.1.2
 
 # Export the image (compressed) and record a checksum
-docker save rack-visualizer:1.1.1 | gzip > rack-visualizer-1.1.1.tar.gz
-sha256sum rack-visualizer-1.1.1.tar.gz
+docker save rack-visualizer:1.1.2 | gzip > rack-visualizer-1.1.2.tar.gz
+sha256sum rack-visualizer-1.1.2.tar.gz
 ```
 
 Bump the version tag (`1.1.0` → `1.1.1` …) on each migration so the target
@@ -48,10 +48,10 @@ host can tell which build it has.
 cd ~/powerflex-visualizer
 
 # Verify the transfer survived intact
-sha256sum rack-visualizer-1.1.1.tar.gz   # must match the source checksum
+sha256sum rack-visualizer-1.1.2.tar.gz   # must match the source checksum
 
 # Import the image
-docker load -i rack-visualizer-1.1.1.tar.gz
+docker load -i rack-visualizer-1.1.2.tar.gz
 
 # Lock down secrets
 chmod 600 .env certs/server.key
@@ -74,7 +74,7 @@ curl -sk -o /dev/null -w '%{http_code}\n' https://localhost:8082/api/racks   # e
   install offline.
 - **Architecture must match.** The image is `linux/amd64` (standard x86_64
   OEL9 VM is fine). Check with
-  `docker image inspect rack-visualizer:1.1.1 --format '{{.Architecture}}'`.
+  `docker image inspect rack-visualizer:1.1.2 --format '{{.Architecture}}'`.
   For an ARM target, rebuild here with `docker build --platform linux/arm64`.
 - **TLS cert SANs.** The cert covers whatever hostnames/IPs it was generated
   for (see README.md). If users reach the new VM by a different hostname or IP,
@@ -100,11 +100,12 @@ There is no registry to pull from, so every future change repeats the cycle:
 
 ## 6. Current staged artifact (this migration)
 
-- Tarball: `~/powerflex-visualizer/rack-visualizer-1.1.1.tar.gz` (47 MB, gzip)
-- SHA-256: `52668fb67f44fabebfdbf7e0b00ae0ea1cb77b281a4778bd7ed89ce64990db5d`
-- Image: `rack-visualizer:1.1.1` (id `30224ebccd09`, linux/amd64) — fixes the
-  ldapts v8 `search()` signature bug that broke `LDAP_GROUP_NAME` enforcement
-  (`control.write is not a function`); 1.1.0 is superseded.
+- Tarball: `~/powerflex-visualizer/rack-visualizer-1.1.2.tar.gz` (47 MB, gzip)
+- SHA-256: `a865c7448248e200408aca280ced0242e0676fbc8207f16b992654ef117bc9ce`
+- Image: `rack-visualizer:1.1.2` (id `7cbcabadb02f`, linux/amd64) — fixes both
+  LDAP group-check bugs: the ldapts v8 `search()` signature crash (1.1.1) and
+  the `escapeFilter` misuse that searched for the group name's first character.
+  1.1.0/1.1.1 are superseded.
 
 > The checksum above is for this specific export. Rebuilding the image (even
 > from identical source) produces a new tarball and checksum — always re-run
