@@ -377,8 +377,6 @@ app.get('/api/racks', async (req, res) => {
       serial: sw.serial,
       serviceTag: null,
       heightU: sw.heightU,
-      duct: sw.duct ?? false,
-      heightLabel: sw.heightLabel ?? null,
       locationRaw: sw.locationRaw,
       datacenter: parsed.datacenter ?? null,
       env: parsed.env ?? null,
@@ -542,17 +540,6 @@ app.get('/api/nodes/:host/lldp', async (req, res) => {
 
 const SWITCH_ROLES = ['Leaf A', 'Leaf B', 'Border Leaf A', 'Border Leaf B', 'Management', 'Management Agg A', 'Management Agg B', 'Spine A', 'Spine B', 'Spine C'];
 
-// Accepted Height values, keyed "<nominal>|<duct>". The mapping is a table
-// rather than nominal+1 because "2U with duct" occupies 3U.
-const HEIGHT_OPTIONS = new Map([
-  ['1|0', { heightU: 1, label: '1U' }],
-  ['1|1', { heightU: 2, label: '1U with duct' }],
-  ['1.2|1', { heightU: 2, label: '1.2U with duct' }],
-  ['1.25|1', { heightU: 2, label: '1.25U with duct' }],
-  ['2|0', { heightU: 2, label: '2U' }],
-  ['2|1', { heightU: 3, label: '2U with duct' }],
-]);
-
 app.get('/api/managed', (req, res) => {
   try {
     res.json({
@@ -569,8 +556,8 @@ app.get('/api/managed', (req, res) => {
 // Central validation for switch input (used by both the form and CSV
 // import): required fields capped at 100 chars, IP checked against the
 // hostname allowlist, role checked against a fixed allowlist, height
-// restricted to the HEIGHT_OPTIONS table, and location must parse to a rack +
-// RU. Values that fail here are never persisted.
+// restricted to 1U or 2U, and location must parse to a rack + RU. Values
+// that fail here are never persisted.
 function validateSwitch(b) {
   const makeModel = String(b.makeModel ?? '').trim();
   const name = String(b.name ?? '').trim();
@@ -578,13 +565,7 @@ function validateSwitch(b) {
   const serial = String(b.serial ?? '').trim();
   const locationRaw = String(b.locationRaw ?? '').trim();
   const role = String(b.role ?? '').trim();
-  // Height accepts "1"/"2" or a duct variant ("1d", "1.2U with duct", ...);
-  // the accepted combinations and their occupied U live in HEIGHT_OPTIONS.
-  const heightRaw = String(b.heightU ?? '').trim().toLowerCase();
-  const heightNum = heightRaw.match(/\d+(?:\.\d+)?/)?.[0] ?? null;
-  const duct = /\bduct\b/.test(heightRaw) || /(?:\d+(?:\.\d+)?)\s*u?\s*d$/.test(heightRaw);
-  const heightOpt = heightNum ? HEIGHT_OPTIONS.get(`${heightNum}|${duct ? 1 : 0}`) : null;
-  const heightU = heightOpt ? heightOpt.heightU : NaN;
+  const heightU = Number(String(b.heightU ?? '').trim().replace(/u$/i, ''));
 
   const problems = [];
   if (!makeModel || makeModel.length > 100) problems.push('Make/Model is required');
@@ -592,12 +573,12 @@ function validateSwitch(b) {
   if (!validHost(ip)) problems.push('IP address is invalid');
   if (!serial || serial.length > 100) problems.push('Serial number is required');
   if (!SWITCH_ROLES.includes(role)) problems.push(`Role must be one of: ${SWITCH_ROLES.join(', ')}`);
-  if (!heightOpt) problems.push('Height must be 1U, 1U with duct, 1.2U with duct, 1.25U with duct, 2U, or 2U with duct');
+  if (heightU !== 1 && heightU !== 2) problems.push('Height must be 1U or 2U');
   const parsed = parseLocation(locationRaw);
   if (!parsed || parsed.rackNumber == null || parsed.ru == null) {
     problems.push('Location must include Rack<N> and RU<N>, e.g. "DC1 Prod_Rack1 RU18"');
   }
-  return { problems, value: { name, makeModel, ip, serial, locationRaw, role, heightU, duct, heightLabel: heightOpt?.label ?? null } };
+  return { problems, value: { name, makeModel, ip, serial, locationRaw, role, heightU } };
 }
 
 app.post('/api/switches', express.json({ limit: '16kb' }), (req, res) => {

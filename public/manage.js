@@ -182,13 +182,6 @@ const swCancelBtn = document.getElementById('sw-cancel');
 let editingIndex = null;
 let managedSwitches = [];
 
-// Map a stored switch back to the Height select value.
-const HEIGHT_VALUES = { '1u': '1', '1u with duct': '1d', '1.2u with duct': '1.2d', '1.25u with duct': '1.25d', '2u': '2', '2u with duct': '2d' };
-function heightSelectValue(s) {
-  const label = (s.heightLabel ?? (s.duct ? `${s.heightU - 1}U with duct` : `${s.heightU}U`)).toLowerCase();
-  return HEIGHT_VALUES[label] ?? '1';
-}
-
 function startEdit(i) {
   const sw = managedSwitches[i];
   if (!sw) return;
@@ -199,7 +192,7 @@ function startEdit(i) {
   document.getElementById('sw-serial').value = sw.serial;
   document.getElementById('sw-location').value = sw.locationRaw;
   swRoleSelect.value = sw.role;
-  swHeightSelect.value = heightSelectValue(sw);
+  swHeightSelect.value = String(sw.heightU);
   swRoleHint.hidden = true;
   swSubmitBtn.textContent = 'Save changes';
   swCancelBtn.hidden = false;
@@ -380,7 +373,7 @@ async function loadManaged() {
       }))));
     listEl.appendChild(renderGroup('Network devices',
       data.switches.map((s, i) => ({
-        label: `${s.makeModel} · ${s.name} · ${s.role} · ${s.locationRaw} · ${s.duct ? `${s.heightLabel ?? `${s.heightU - 1}U with duct`} (${s.heightU}U)` : `${s.heightU}U`}`,
+        label: `${s.makeModel} · ${s.name} · ${s.role} · ${s.locationRaw} · ${s.heightU}U`,
         editIndex: i,
         removeUrl: `/api/switches/${i}`,
       }))));

@@ -236,7 +236,7 @@ function renderTooltip(server) {
         `Role: ${server.role}`,
         `IP: ${server.ip}`,
         `Serial: ${server.serial}`,
-        `Position: RU${server.ru} (${server.duct ? `${server.heightLabel ?? `${server.heightU - 1}U with duct`}, ${server.heightU}U` : `${server.heightU}U`})`,
+        `Position: RU${server.ru} (${server.heightU}U)`,
       ]
     : [
         server.host,

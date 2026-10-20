@@ -243,8 +243,7 @@ sections:
   Location (same format as iDRAC, e.g. `DC1 Prod_Rack1 RU18`), Role
   (Leaf A / Leaf B / Border Leaf A / Border Leaf B / Management Agg A /
   Management Agg B / Management / Spine A / Spine B / Spine C), and Height
-  (1U, 1U with duct (2U), 1.2U with duct (2U), 1.25U with duct (2U), 2U, or
-  2U with duct (3U)).
+  (1U or 2U).
   Make/Model values you have entered before appear as autocomplete suggestions
   (kept in `data/switch-models.json`), so repeat models only need picking from
   the list. The Role dropdown is auto-selected from the switch name when it
@@ -257,9 +256,8 @@ sections:
   `Switch name`, `IP address`, `Serial number`, `Location`, `Role`, `Height`
   columns — **Download example CSV** fetches a ready-made template
   (`public/switches-example.csv`). Role matching is case-insensitive, Height
-  accepts `1`/`2` plus duct variants (`1d`, `1.2U with duct`, `1.25U with
-  duct`, `2d`, …), and rows whose switch name is already configured are
-  skipped.
+  accepts `1`/`2`/`1U`/`2U`, and rows whose switch name is already configured
+  are skipped.
 - **Current entries** — lists everything configured. Discovered iDRAC hosts and
   network devices have a **Remove** button; network devices also have an
   **Edit** button that loads the device into the "Add network device" form
