@@ -20,14 +20,14 @@ docker compose build
 
 # Tag it with a stable, explicit name (the compose-generated name depends on
 # the directory name, so don't rely on it for transfer)
-docker tag powerflex-visualizer_rack-visualizer:latest rack-visualizer:1.0.0
+docker tag powerflex-visualizer_rack-visualizer:latest rack-visualizer:1.1.0
 
 # Export the image (compressed) and record a checksum
-docker save rack-visualizer:1.0.0 | gzip > rack-visualizer-1.0.0.tar.gz
-sha256sum rack-visualizer-1.0.0.tar.gz
+docker save rack-visualizer:1.1.0 | gzip > rack-visualizer-1.1.0.tar.gz
+sha256sum rack-visualizer-1.1.0.tar.gz
 ```
 
-Bump the version tag (`1.0.0` → `1.0.1` …) on each migration so the target
+Bump the version tag (`1.1.0` → `1.1.1` …) on each migration so the target
 host can tell which build it has.
 
 ## 2. Files to transfer (SCP to the target, e.g. `~/powerflex-visualizer/`)
@@ -48,10 +48,10 @@ host can tell which build it has.
 cd ~/powerflex-visualizer
 
 # Verify the transfer survived intact
-sha256sum rack-visualizer-1.0.0.tar.gz   # must match the source checksum
+sha256sum rack-visualizer-1.1.0.tar.gz   # must match the source checksum
 
 # Import the image
-docker load -i rack-visualizer-1.0.0.tar.gz
+docker load -i rack-visualizer-1.1.0.tar.gz
 
 # Lock down secrets
 chmod 600 .env certs/server.key
@@ -74,7 +74,7 @@ curl -sk -o /dev/null -w '%{http_code}\n' https://localhost:8082/api/racks   # e
   install offline.
 - **Architecture must match.** The image is `linux/amd64` (standard x86_64
   OEL9 VM is fine). Check with
-  `docker image inspect rack-visualizer:1.0.0 --format '{{.Architecture}}'`.
+  `docker image inspect rack-visualizer:1.1.0 --format '{{.Architecture}}'`.
   For an ARM target, rebuild here with `docker build --platform linux/arm64`.
 - **TLS cert SANs.** The cert covers whatever hostnames/IPs it was generated
   for (see README.md). If users reach the new VM by a different hostname or IP,
@@ -100,10 +100,11 @@ There is no registry to pull from, so every future change repeats the cycle:
 
 ## 6. Current staged artifact (this migration)
 
-- Tarball: `/tmp/rack-visualizer-1.0.0.tar.gz` (47 MB, gzip)
-- SHA-256: `3816a191a460f17620aad80ee2fc27595f3b89e2379137e9b715969bd8ec1d82`
-- Image: `rack-visualizer:1.0.0` (id `e7c95a7bc093`, linux/amd64) — round-trip
-  tested with `docker load` on the source machine.
+- Tarball: `~/powerflex-visualizer/rack-visualizer-1.1.0.tar.gz` (47 MB, gzip)
+- SHA-256: `8e9278e5a134f43d0673097670cb412ea3c618bdb37fa12ec3d93c23402bd031`
+- Image: `rack-visualizer:1.1.0` (id `ce3d2bf2eeba`, linux/amd64) — round-trip
+  tested with `docker load` on the source machine. Includes the Oct 2026
+  LLDP / settings / switch-editing work (not present in the 1.0.0 artifact).
 
 > The checksum above is for this specific export. Rebuilding the image (even
 > from identical source) produces a new tarball and checksum — always re-run
