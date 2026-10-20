@@ -211,11 +211,12 @@ All pages and API endpoints require login.
 
 ## Behavior
 
-- Hover a server: iDRAC hostname + service tag, plus LLDP connectivity read
-  from the iDRAC (each NIC port → switch port and switch chassis ID, with link
-  speed). LLDP data is fetched lazily on first hover via
-  `GET /api/nodes/<host>/lldp` and cached for 60 seconds per host. Click:
-  opens the iDRAC in a new tab.
+- Hover a server: iDRAC hostname, resolved IP/DNS name, service tag, model,
+  CPU config and RAM capacity (from Redfish `ProcessorSummary`/
+  `MemorySummary`), plus LLDP connectivity read from the iDRAC (each NIC
+  port → switch port and switch chassis ID, with link speed). LLDP data is
+  fetched lazily on first hover via `GET /api/nodes/<host>/lldp` and cached
+  for 60 seconds per host. Click: opens the iDRAC in a new tab.
 - Switch chassis MACs are labeled with friendly names when they match an entry
   in **Settings → Switch MAC to Name** (see below).
 - Racks are grouped by datacenter + environment (e.g. `DC1 Prod`). A dropdown in
@@ -242,20 +243,23 @@ sections:
   Location (same format as iDRAC, e.g. `DC1 Prod_Rack1 RU18`), Role
   (Leaf A / Leaf B / Border Leaf A / Border Leaf B / Management Agg A /
   Management Agg B / Management / Spine A / Spine B / Spine C), and Height
-  (1U, 2U, or 1.25U with Duct — the duct option takes 2U in the rack).
+  (1U, 1U with duct (2U), 1.2U with duct (2U), 1.25U with duct (2U), 2U, or
+  2U with duct (3U)).
   Make/Model values you have entered before appear as autocomplete suggestions
   (kept in `data/switch-models.json`), so repeat models only need picking from
   the list. The Role dropdown is auto-selected from the switch name when it
   matches a known pattern — names ending `-lf-n9k01`, `-blf-n9k07`,
-  `-ma-n9k03` (also `-bl-`/`-mgmt-`/`-agg-`) map to Leaf / Border Leaf /
+  `-ma-n9k03` (also `-bl-`/`-agg-`) map to Leaf / Border Leaf /
   Management Agg with an odd trailing number meaning A and even meaning B;
+  `-mgmtagg01` maps to Management Agg A/B and `-mgmt` to Management;
   `-sp-n9k01/02/03` map to Spine A / B / C — and can still be overridden
   manually. **Import CSV** bulk-adds devices: header row with `Make/Model`,
   `Switch name`, `IP address`, `Serial number`, `Location`, `Role`, `Height`
   columns — **Download example CSV** fetches a ready-made template
   (`public/switches-example.csv`). Role matching is case-insensitive, Height
-  accepts `1`/`2`/`1U`/`2U`/`1.25U` (1.25U with duct counts as 2U), and rows
-  whose switch name is already configured are skipped.
+  accepts `1`/`2` plus duct variants (`1d`, `1.2U with duct`, `1.25U with
+  duct`, `2d`, …), and rows whose switch name is already configured are
+  skipped.
 - **Current entries** — lists everything configured. Discovered iDRAC hosts and
   network devices have a **Remove** button; network devices also have an
   **Edit** button that loads the device into the "Add network device" form

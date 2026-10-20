@@ -210,6 +210,16 @@ async function loadSettings() {
   }
 }
 
+function cpuLine(server) {
+  const parts = [];
+  if (server.cpuCount != null) parts.push(`${server.cpuCount}×`);
+  if (server.cpuModel) parts.push(server.cpuModel);
+  if (parts.length === 0) return 'CPU: unknown';
+  let line = `CPU: ${parts.join(' ')}`;
+  if (server.cpuThreads != null) line += ` (${server.cpuThreads} threads)`;
+  return line;
+}
+
 function showTooltip(e, server) {
   tooltipServer = server;
   renderTooltip(server);
@@ -226,12 +236,16 @@ function renderTooltip(server) {
         `Role: ${server.role}`,
         `IP: ${server.ip}`,
         `Serial: ${server.serial}`,
-        `Position: RU${server.ru} (${server.heightU}U)`,
+        `Position: RU${server.ru} (${server.duct ? `${server.heightLabel ?? `${server.heightU - 1}U with duct`}, ${server.heightU}U` : `${server.heightU}U`})`,
       ]
     : [
         server.host,
+        ...(server.hostIp ? [`IP: ${server.hostIp}`] : []),
+        ...(server.hostDns ? [`DNS: ${server.hostDns}`] : []),
         `Service tag: ${server.serviceTag}`,
         `Model: ${server.model ?? 'unknown'}`,
+        cpuLine(server),
+        `RAM: ${server.memoryGiB != null ? `${server.memoryGiB} GB` : 'unknown'}`,
         `Position: RU${server.ru} (${server.heightU}U)`,
       ];
   if (server.kind !== 'switch') lines.push(...lldpLines(server));

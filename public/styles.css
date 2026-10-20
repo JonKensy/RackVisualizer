@@ -87,7 +87,6 @@ header h1 { font-size: 1.25rem; margin: 0; }
   cursor: pointer;
 }
 .row-remove:hover { border-color: var(--error); color: #ff8a80; }
-.managed-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .row-edit {
   background: var(--panel);
   color: var(--muted);
@@ -97,6 +96,8 @@ header h1 { font-size: 1.25rem; margin: 0; }
   cursor: pointer;
 }
 .row-edit:hover { border-color: var(--server); color: var(--server); }
+.item-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.form-actions { grid-column: 1 / -1; display: flex; gap: 8px; }
 .row-actions { display: flex; gap: 8px; margin-top: 12px; }
 .node-row .row-add,
 .node-row .row-remove {

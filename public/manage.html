@@ -58,9 +58,9 @@
             <option>Leaf B</option>
             <option>Border Leaf A</option>
             <option>Border Leaf B</option>
+            <option>Management</option>
             <option>Management Agg A</option>
             <option>Management Agg B</option>
-            <option>Management</option>
             <option>Spine A</option>
             <option>Spine B</option>
             <option>Spine C</option>
@@ -70,12 +70,17 @@
         <label>Height
           <select id="sw-height">
             <option value="1">1U</option>
+            <option value="1d">1U with duct (2U)</option>
+            <option value="1.2d">1.2U with duct (2U)</option>
+            <option value="1.25d">1.25U with duct (2U)</option>
             <option value="2">2U</option>
-            <option value="2">1.25U with Duct (2U)</option>
+            <option value="2d">2U with duct (3U)</option>
           </select>
         </label>
-        <button type="submit" id="sw-submit">Add device</button>
-        <button type="button" id="sw-cancel" hidden>Cancel edit</button>
+        <div class="form-actions">
+          <button type="submit" id="sw-submit">Add device</button>
+          <button type="button" id="sw-cancel" hidden>Cancel edit</button>
+        </div>
       </form>
       <div class="row-actions">
         <button type="button" id="import-switch-csv">Import CSV</button>

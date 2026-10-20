@@ -124,19 +124,32 @@ csvInput.addEventListener('change', async () => {
   }
 });
 
+const oddEven = (n) => (n % 2 === 1 ? 'A' : 'B');
+
+// Patterns are tried in order, so "-mgmtagg" must precede "-mgmt". The
+// number for odd/even pairing is the one right after the role token when
+// present (e.g. -mgmtagg01), otherwise the -n9kNN suffix.
 const NAME_ROLE_PATTERNS = [
-  { re: /-lf-n9k(\d+)$/i, base: 'Leaf', letter: (n) => (n % 2 === 1 ? 'A' : 'B') },
-  { re: /-blf?-n9k(\d+)$/i, base: 'Border Leaf', letter: (n) => (n % 2 === 1 ? 'A' : 'B') },
-  { re: /-(?:ma|mgmt|agg)-n9k(\d+)$/i, base: 'Management Agg', letter: (n) => (n % 2 === 1 ? 'A' : 'B') },
-  { re: /-sp-n9k(\d+)$/i, base: 'Spine', letter: (n) => 'ABC'[n - 1] ?? null },
+  { re: /-lf-n9k(\d+)$/i, role: (m) => `Leaf ${oddEven(Number(m[1]))}` },
+  { re: /-blf?-n9k(\d+)$/i, role: (m) => `Border Leaf ${oddEven(Number(m[1]))}` },
+  {
+    re: /-mgmtagg[-_]?(\d+)?(?:-n9k(\d+))?$/i,
+    role: (m) => {
+      const n = Number(m[1] ?? m[2]);
+      return Number.isFinite(n) ? `Management Agg ${oddEven(n)}` : null;
+    },
+  },
+  { re: /-(?:ma|agg)-n9k(\d+)$/i, role: (m) => `Management Agg ${oddEven(Number(m[1]))}` },
+  { re: /-mgmt[-_]?(\d+)?(?:-n9k(\d+))?$/i, role: () => 'Management' },
+  { re: /-sp-n9k(\d+)$/i, role: (m) => ('ABC'[Number(m[1]) - 1] ? `Spine ${'ABC'[Number(m[1]) - 1]}` : null) },
 ];
 
 function deriveRole(name) {
-  for (const { re, base, letter } of NAME_ROLE_PATTERNS) {
+  for (const { re, role } of NAME_ROLE_PATTERNS) {
     const m = name.match(re);
     if (m) {
-      const suffix = letter(Number(m[1]));
-      return suffix ? `${base} ${suffix}` : null;
+      const r = role(m);
+      if (r) return r;
     }
   }
   return null;
@@ -163,35 +176,51 @@ swRoleSelect.addEventListener('change', () => {
 
 // The add-device form doubles as the edit form: clicking Edit on a network
 // device loads it here (editingIndex set), and submit then PUTs the change.
-const swForm = document.getElementById('add-switch-form');
+const swHeightSelect = document.getElementById('sw-height');
 const swSubmitBtn = document.getElementById('sw-submit');
 const swCancelBtn = document.getElementById('sw-cancel');
 let editingIndex = null;
+let managedSwitches = [];
 
-function setEditing(index, sw) {
-  editingIndex = index;
-  if (sw) {
-    document.getElementById('sw-make').value = sw.makeModel;
-    swNameInput.value = sw.name;
-    document.getElementById('sw-ip').value = sw.ip;
-    document.getElementById('sw-serial').value = sw.serial;
-    document.getElementById('sw-location').value = sw.locationRaw;
-    swRoleSelect.value = sw.role;
-    document.getElementById('sw-height').value = String(sw.heightU);
-    swRoleHint.hidden = true;
-    swSubmitBtn.textContent = 'Save changes';
-    swCancelBtn.hidden = false;
-    swForm.scrollIntoView({ block: 'center' });
-  } else {
-    swForm.reset();
-    swSubmitBtn.textContent = 'Add device';
-    swCancelBtn.hidden = true;
-  }
+// Map a stored switch back to the Height select value.
+const HEIGHT_VALUES = { '1u': '1', '1u with duct': '1d', '1.2u with duct': '1.2d', '1.25u with duct': '1.25d', '2u': '2', '2u with duct': '2d' };
+function heightSelectValue(s) {
+  const label = (s.heightLabel ?? (s.duct ? `${s.heightU - 1}U with duct` : `${s.heightU}U`)).toLowerCase();
+  return HEIGHT_VALUES[label] ?? '1';
 }
 
-swCancelBtn.addEventListener('click', () => setEditing(null));
+function startEdit(i) {
+  const sw = managedSwitches[i];
+  if (!sw) return;
+  editingIndex = i;
+  document.getElementById('sw-make').value = sw.makeModel;
+  document.getElementById('sw-name').value = sw.name;
+  document.getElementById('sw-ip').value = sw.ip;
+  document.getElementById('sw-serial').value = sw.serial;
+  document.getElementById('sw-location').value = sw.locationRaw;
+  swRoleSelect.value = sw.role;
+  swHeightSelect.value = heightSelectValue(sw);
+  swRoleHint.hidden = true;
+  swSubmitBtn.textContent = 'Save changes';
+  swCancelBtn.hidden = false;
+  document.getElementById('add-switch-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setStatus(`Editing ${sw.name} — update the fields and save.`, 'busy');
+}
 
-swForm.addEventListener('submit', async (e) => {
+function exitEdit() {
+  editingIndex = null;
+  swSubmitBtn.textContent = 'Add device';
+  swCancelBtn.hidden = true;
+}
+
+swCancelBtn.addEventListener('click', () => {
+  document.getElementById('add-switch-form').reset();
+  exitEdit();
+  swRoleHint.hidden = true;
+  setStatus('Edit cancelled.', '');
+});
+
+document.getElementById('add-switch-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const body = {
     makeModel: document.getElementById('sw-make').value.trim(),
@@ -200,23 +229,24 @@ swForm.addEventListener('submit', async (e) => {
     serial: document.getElementById('sw-serial').value.trim(),
     locationRaw: document.getElementById('sw-location').value.trim(),
     role: document.getElementById('sw-role').value,
-    heightU: Number(document.getElementById('sw-height').value),
+    heightU: document.getElementById('sw-height').value,
   };
+  const editing = editingIndex != null;
   try {
-    const res = await fetch(editingIndex === null ? '/api/switches' : `/api/switches/${editingIndex}`, {
-      method: editingIndex === null ? 'POST' : 'PUT',
+    const res = await fetch(editing ? `/api/switches/${editingIndex}` : '/api/switches', {
+      method: editing ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     if (res.status === 401) { redirectToLogin(); return; }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-    const done = editingIndex === null ? data.added : data.updated;
-    setStatus(`${editingIndex === null ? 'Added' : 'Updated'} ${done.makeModel} (${done.name}).`, 'ok');
-    setEditing(null);
+    setStatus(editing ? `Updated ${data.updated.name}.` : `Added ${data.added.makeModel} (${data.added.name}).`, 'ok');
+    e.target.reset();
+    exitEdit();
     loadManaged();
   } catch (err) {
-    setStatus(`Could not ${editingIndex === null ? 'add' : 'update'} device: ${err.message}`, 'error');
+    setStatus(`Could not ${editing ? 'update' : 'add'} device: ${err.message}`, 'error');
   }
 });
 
@@ -299,25 +329,27 @@ function renderGroup(title, items) {
     const label = document.createElement('span');
     label.textContent = item.label;
     row.appendChild(label);
-    const actions = document.createElement('span');
-    actions.className = 'managed-actions';
-    if (item.editIndex !== undefined) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'row-edit';
-      btn.textContent = 'Edit';
-      btn.addEventListener('click', () => setEditing(item.editIndex, item.switch));
-      actions.appendChild(btn);
+    if (item.editIndex != null || item.removeUrl) {
+      const actions = document.createElement('span');
+      actions.className = 'item-actions';
+      if (item.editIndex != null) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'row-edit';
+        btn.textContent = 'Edit';
+        btn.addEventListener('click', () => startEdit(item.editIndex));
+        actions.appendChild(btn);
+      }
+      if (item.removeUrl) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'row-remove';
+        btn.textContent = 'Remove';
+        btn.addEventListener('click', () => removeEntry(item.removeUrl, item.label));
+        actions.appendChild(btn);
+      }
+      row.appendChild(actions);
     }
-    if (item.removeUrl) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'row-remove';
-      btn.textContent = 'Remove';
-      btn.addEventListener('click', () => removeEntry(item.removeUrl, item.label));
-      actions.appendChild(btn);
-    }
-    if (actions.childNodes.length > 0) row.appendChild(actions);
     group.appendChild(row);
   }
   return group;
@@ -330,6 +362,7 @@ async function loadManaged() {
     if (res.status === 401) { redirectToLogin(); return; }
     if (!res.ok) throw new Error(`API returned ${res.status}`);
     const data = await res.json();
+    managedSwitches = data.switches;
     const datalist = document.getElementById('sw-make-list');
     datalist.innerHTML = '';
     for (const model of data.models ?? []) {
@@ -347,10 +380,9 @@ async function loadManaged() {
       }))));
     listEl.appendChild(renderGroup('Network devices',
       data.switches.map((s, i) => ({
-        label: `${s.makeModel} · ${s.name} · ${s.role} · ${s.locationRaw} · ${s.heightU}U`,
-        removeUrl: `/api/switches/${i}`,
+        label: `${s.makeModel} · ${s.name} · ${s.role} · ${s.locationRaw} · ${s.duct ? `${s.heightLabel ?? `${s.heightU - 1}U with duct`} (${s.heightU}U)` : `${s.heightU}U`}`,
         editIndex: i,
-        switch: s,
+        removeUrl: `/api/switches/${i}`,
       }))));
   } catch (err) {
     listEl.textContent = `Failed to load entries: ${err.message}`;
