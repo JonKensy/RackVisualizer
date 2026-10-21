@@ -37,7 +37,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cookieSession from 'cookie-session';
 import { fetchHostSystem, fetchHostLldp, verifyHost } from './lib/redfish.js';
-import { buildServer, buildRacks, parseLocation, decodeLldpId } from './lib/parse.js';
+import { buildServer, buildRacks, parseLocation, decodeLldpId, macMatchKey } from './lib/parse.js';
 import { loadOrCreateSecret, ensureDefaultUsers, authenticate, hashPassword, verifyPassword, SESSION_MAX_AGE_MS } from './lib/auth.js';
 import { loadOrCreateKey, encryptSecret, decryptSecret } from './lib/crypto.js';
 import { fetchIdracHosts } from './lib/powerflex.js';
@@ -661,8 +661,9 @@ app.post('/api/switch-macs', express.json({ limit: '16kb' }), (req, res) => {
   if (!mac) return res.status(400).json({ error: 'Invalid MAC address (expected 12 hex digits)' });
   if (!name || name.length > 100) return res.status(400).json({ error: 'Switch name is required (max 100 chars)' });
   const list = loadSwitchMacs();
-  if (list.some((m) => String(m.mac).toLowerCase() === mac)) {
-    return res.status(409).json({ error: `${mac} is already mapped` });
+  const key = macMatchKey(mac);
+  if (list.some((m) => macMatchKey(normalizeMac(m.mac) ?? '') === key)) {
+    return res.status(409).json({ error: `${mac} conflicts with an existing mapping (the last octet is ignored — it identifies the switch port)` });
   }
   list.push({ mac, name });
   saveSwitchMacs(list);
@@ -696,7 +697,7 @@ app.get('/api/nodes/:host/lldp', async (req, res) => {
     const systemData = await fetchHostSystem(host, creds);
     const systemOdataId = systemData.system['@odata.id'] ?? `/redfish/v1/Systems/${systemData.serviceTag}`;
     const ports = await fetchHostLldp(host, creds, systemOdataId);
-    const macNames = new Map(loadSwitchMacs().map((m) => [String(m.mac).toLowerCase(), m.name]));
+    const macNames = new Map(loadSwitchMacs().map((m) => [macMatchKey(normalizeMac(m.mac) ?? ''), m.name]));
     res.json({
       host,
       ports: ports.map((p) => ({
@@ -705,7 +706,7 @@ app.get('/api/nodes/:host/lldp', async (req, res) => {
           ? {
               chassisId: decodeLldpId(p.lldp.ChassisId),
               chassisIdSubtype: p.lldp.ChassisIdSubtype ?? null,
-              chassisName: macNames.get(normalizeMac(p.lldp.ChassisId) ?? '') ?? null,
+              chassisName: macNames.get(macMatchKey(normalizeMac(p.lldp.ChassisId) ?? '')) ?? null,
               portId: decodeLldpId(p.lldp.PortId),
               portIdSubtype: p.lldp.PortIdSubtype ?? null,
             }
