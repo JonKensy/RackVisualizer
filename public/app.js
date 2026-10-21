@@ -165,7 +165,9 @@ function renderServer(server) {
     label.textContent = `${server.model} · ${server.role}`;
   } else {
     el.tabIndex = 0;
-    const model = server.model ? server.model.replace(/^PowerEdge\s+/i, '') : 'Unknown model';
+    const model = server.model
+      ? server.model.replace(/^PowerEdge\s+/i, '').replace(/^PowerFlex\s+rack\s+/i, 'PFlex ')
+      : 'Unknown model';
     const shortHost = server.host.replace(/^(?:idrac|drac)-/i, '').split('.')[0];
     label.textContent = `${model} · ${server.serviceTag} · ${shortHost}`;
   }
