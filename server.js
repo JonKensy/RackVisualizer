@@ -126,6 +126,8 @@ function loadSettings() {
     powerflexResourcesPath: '',
     idracUser: '',
     idracPassEnc: '',
+    pfxIdracUser: '',
+    pfxIdracPassEnc: '',
   };
   try {
     const s = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
@@ -140,6 +142,8 @@ function loadSettings() {
       powerflexResourcesPath: String(s.powerflexResourcesPath ?? ''),
       idracUser: String(s.idracUser ?? ''),
       idracPassEnc: String(s.idracPassEnc ?? ''),
+      pfxIdracUser: String(s.pfxIdracUser ?? ''),
+      pfxIdracPassEnc: String(s.pfxIdracPassEnc ?? ''),
     };
   } catch {
     return blank;
@@ -157,8 +161,10 @@ function publicSettings(s) {
     powerflexLoginPath: s.powerflexLoginPath,
     powerflexResourcesPath: s.powerflexResourcesPath,
     idracUser: s.idracUser,
+    pfxIdracUser: s.pfxIdracUser,
     hasPowerflexPassword: Boolean(s.powerflexPassEnc),
     hasIdracPassword: Boolean(s.idracPassEnc),
+    hasPfxIdracPassword: Boolean(s.pfxIdracPassEnc),
   };
 }
 function saveSettings(settings) {
@@ -202,12 +208,16 @@ function allHosts() {
 // iDRAC credentials: Settings-page values take precedence over the
 // IDRAC_USER/IDRAC_PASSWORD env fallback. The stored password is decrypted
 // per request; a corrupt blob or missing key falls back to env rather than
-// failing the whole page.
+// failing the whole page. The pair used depends on the active host source:
+// PowerFlex-discovered hosts use pfxIdrac*, servers.json/manual hosts use
+// idrac* (the two sources never appear together, see allHosts()).
 function idracCreds() {
   const s = loadSettings();
-  if (s.idracUser) {
-    const pass = decryptSecret(ENC_KEY, s.idracPassEnc);
-    if (pass != null) return { user: s.idracUser, pass };
+  const user = s.powerflexEnabled ? s.pfxIdracUser : s.idracUser;
+  const enc = s.powerflexEnabled ? s.pfxIdracPassEnc : s.idracPassEnc;
+  if (user) {
+    const pass = decryptSecret(ENC_KEY, enc);
+    if (pass != null) return { user, pass };
   }
   return { user: process.env.IDRAC_USER, pass: process.env.IDRAC_PASSWORD };
 }
@@ -571,7 +581,7 @@ app.post('/api/settings', express.json({ limit: '16kb' }), (req, res) => {
       settings[field] = p;
     }
   }
-  for (const field of ['powerflexUser', 'idracUser']) {
+  for (const field of ['powerflexUser', 'idracUser', 'pfxIdracUser']) {
     if (body[field] !== undefined) {
       const v = String(body[field]).trim();
       if (v.length > 100) return res.status(400).json({ error: `${field} is too long (max 100 chars)` });
@@ -586,6 +596,10 @@ app.post('/api/settings', express.json({ limit: '16kb' }), (req, res) => {
     settings.idracPassEnc = encryptSecret(ENC_KEY, body.idracPassword);
   }
   if (body.idracPasswordClear === true) settings.idracPassEnc = '';
+  if (typeof body.pfxIdracPassword === 'string' && body.pfxIdracPassword) {
+    settings.pfxIdracPassEnc = encryptSecret(ENC_KEY, body.pfxIdracPassword);
+  }
+  if (body.pfxIdracPasswordClear === true) settings.pfxIdracPassEnc = '';
 
   saveSettings(settings);
   res.json(publicSettings(settings));

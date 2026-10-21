@@ -20,11 +20,11 @@ docker compose build
 
 # Tag it with a stable, explicit name (the compose-generated name depends on
 # the directory name, so don't rely on it for transfer)
-docker tag powerflex-visualizer_rack-visualizer:latest rack-visualizer:1.2.0
+docker tag powerflex-visualizer_rack-visualizer:latest rack-visualizer:1.3.0
 
 # Export the image (compressed) and record a checksum
-docker save rack-visualizer:1.2.0 | gzip > rack-visualizer-1.2.0.tar.gz
-sha256sum rack-visualizer-1.2.0.tar.gz
+docker save rack-visualizer:1.3.0 | gzip > rack-visualizer-1.3.0.tar.gz
+sha256sum rack-visualizer-1.3.0.tar.gz
 ```
 
 Bump the version tag (`1.1.0` → `1.1.1` …) on each migration so the target
@@ -48,10 +48,10 @@ host can tell which build it has.
 cd ~/powerflex-visualizer
 
 # Verify the transfer survived intact
-sha256sum rack-visualizer-1.2.0.tar.gz   # must match the source checksum
+sha256sum rack-visualizer-1.3.0.tar.gz   # must match the source checksum
 
 # Import the image
-docker load -i rack-visualizer-1.2.0.tar.gz
+docker load -i rack-visualizer-1.3.0.tar.gz
 
 # Lock down secrets
 chmod 600 .env certs/server.key
@@ -74,7 +74,7 @@ curl -sk -o /dev/null -w '%{http_code}\n' https://localhost:8082/api/racks   # e
   install offline.
 - **Architecture must match.** The image is `linux/amd64` (standard x86_64
   OEL9 VM is fine). Check with
-  `docker image inspect rack-visualizer:1.2.0 --format '{{.Architecture}}'`.
+  `docker image inspect rack-visualizer:1.3.0 --format '{{.Architecture}}'`.
   For an ARM target, rebuild here with `docker build --platform linux/arm64`.
 - **TLS cert SANs.** The cert covers whatever hostnames/IPs it was generated
   for (see README.md). If users reach the new VM by a different hostname or IP,
@@ -100,16 +100,20 @@ There is no registry to pull from, so every future change repeats the cycle:
 
 ## 6. Current staged artifact (this migration)
 
-- Tarball: `~/powerflex-visualizer/rack-visualizer-1.2.0.tar.gz` (gzip)
-- SHA-256: `8fb9a6ab842cef82c12dccc6982c6ae71173a401f373dc133a1fcd2bd03a24f4`
-- Image: `rack-visualizer:1.2.0` (linux/amd64) — adds the "Discover iDRAC from
-  PowerFlex" feature: Settings gains a PowerFlex Manager connection (URL,
-  username, password) and iDRAC credential overrides; both passwords are
-  stored encrypted (AES-256-GCM). When the toggle is on, the rack view shows
-  only PowerFlex-discovered iDRAC nodes plus manually added switches.
-  1.1.2 is superseded.
+- Tarball: `~/powerflex-visualizer/rack-visualizer-1.3.0.tar.gz` (gzip)
+- SHA-256: `5972f3c22111085a374e889690b7aacc33abed4fb86098620ca110fd99123740`
+- Image: `rack-visualizer:1.3.0` (linux/amd64) — adds an "iDRAC credentials"
+  section at the top of Settings: an encrypted username/password pair used to
+  query servers.json and manually added hosts (PowerFlex-discovered hosts use
+  the separate pair in the PowerFlex section). Also includes the 1.2.0
+  "Discover iDRAC from PowerFlex" feature. 1.1.2/1.2.0 are superseded.
 
-### 1.2.0 upgrade notes
+### 1.2.0+ upgrade notes
+
+- Settings now has two iDRAC credential pairs: the top-level one applies to
+  servers.json/manual hosts, the one inside the PowerFlex section applies to
+  discovered hosts. Both are optional; `IDRAC_USER`/`IDRAC_PASSWORD` env
+  remains the fallback for either.
 
 - Two new files appear under `data/` on first start: `.enc_key` (the AES key,
   mode 0600 — **back this up**; without it the stored passwords are

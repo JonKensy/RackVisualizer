@@ -38,6 +38,39 @@ lldpToggle.addEventListener('change', async () => {
   }
 });
 
+const idracForm = document.getElementById('idrac-form');
+
+idracForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const body = { idracUser: document.getElementById('idrac-user').value.trim() };
+  // Blank password field means "keep the stored value"; clearing is explicit.
+  const pass = document.getElementById('idrac-password').value;
+  if (pass) body.idracPassword = pass;
+  if (document.getElementById('idrac-password-clear').checked) body.idracPasswordClear = true;
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 401) { redirectToLogin(); return; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+    setStatus('iDRAC credentials saved.', 'ok');
+    document.getElementById('idrac-password').value = '';
+    document.getElementById('idrac-password-clear').checked = false;
+    fillIdracFields(data);
+  } catch (err) {
+    setStatus(`Could not save iDRAC credentials: ${err.message}`, 'error');
+  }
+});
+
+function fillIdracFields(data) {
+  document.getElementById('idrac-user').value = data.idracUser ?? '';
+  const passEl = document.getElementById('idrac-password');
+  passEl.placeholder = data.hasIdracPassword ? '(stored — blank keeps it)' : '(not set)';
+}
+
 const pfxToggle = document.getElementById('powerflex-enabled');
 const pfxFields = document.getElementById('powerflex-fields');
 const pfxForm = document.getElementById('powerflex-form');
@@ -75,15 +108,15 @@ pfxForm.addEventListener('submit', async (e) => {
     powerflexUser: document.getElementById('powerflex-user').value.trim(),
     powerflexLoginPath: document.getElementById('powerflex-login-path').value.trim(),
     powerflexResourcesPath: document.getElementById('powerflex-resources-path').value.trim(),
-    idracUser: document.getElementById('idrac-user').value.trim(),
+    pfxIdracUser: document.getElementById('pfx-idrac-user').value.trim(),
   };
   // Blank password fields mean "keep the stored value"; clearing is explicit.
   const pfxPass = document.getElementById('powerflex-password').value;
-  const idracPass = document.getElementById('idrac-password').value;
+  const idracPass = document.getElementById('pfx-idrac-password').value;
   if (pfxPass) body.powerflexPassword = pfxPass;
-  if (idracPass) body.idracPassword = idracPass;
+  if (idracPass) body.pfxIdracPassword = idracPass;
   if (document.getElementById('powerflex-password-clear').checked) body.powerflexPasswordClear = true;
-  if (document.getElementById('idrac-password-clear').checked) body.idracPasswordClear = true;
+  if (document.getElementById('pfx-idrac-password-clear').checked) body.pfxIdracPasswordClear = true;
   try {
     const res = await fetch('/api/settings', {
       method: 'POST',
@@ -95,9 +128,9 @@ pfxForm.addEventListener('submit', async (e) => {
     if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
     setStatus('Settings saved.', 'ok');
     document.getElementById('powerflex-password').value = '';
-    document.getElementById('idrac-password').value = '';
+    document.getElementById('pfx-idrac-password').value = '';
     document.getElementById('powerflex-password-clear').checked = false;
-    document.getElementById('idrac-password-clear').checked = false;
+    document.getElementById('pfx-idrac-password-clear').checked = false;
     fillPfxFields(data);
   } catch (err) {
     setStatus(`Could not save settings: ${err.message}`, 'error');
@@ -109,11 +142,11 @@ function fillPfxFields(data) {
   document.getElementById('powerflex-user').value = data.powerflexUser ?? '';
   document.getElementById('powerflex-login-path').value = data.powerflexLoginPath ?? '';
   document.getElementById('powerflex-resources-path').value = data.powerflexResourcesPath ?? '';
-  document.getElementById('idrac-user').value = data.idracUser ?? '';
+  document.getElementById('pfx-idrac-user').value = data.pfxIdracUser ?? '';
   const pfxPassEl = document.getElementById('powerflex-password');
-  const idracPassEl = document.getElementById('idrac-password');
+  const idracPassEl = document.getElementById('pfx-idrac-password');
   pfxPassEl.placeholder = data.hasPowerflexPassword ? '(stored — blank keeps it)' : '(not set)';
-  idracPassEl.placeholder = data.hasIdracPassword ? '(stored — blank keeps it)' : '(not set)';
+  idracPassEl.placeholder = data.hasPfxIdracPassword ? '(stored — blank keeps it)' : '(not set)';
 }
 
 pfxRefresh.addEventListener('click', async () => {
@@ -173,6 +206,7 @@ async function loadSettings() {
     lldpToggle.checked = data.lldpEnabled !== false;
     pfxToggle.checked = data.powerflexEnabled === true;
     showPfxFields(pfxToggle.checked);
+    fillIdracFields(data);
     fillPfxFields(data);
   } catch (err) {
     setStatus(`Failed to load settings: ${err.message}`, 'error');

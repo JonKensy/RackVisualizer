@@ -25,6 +25,22 @@
   <div id="action-status" role="status" aria-live="polite"></div>
   <main class="manage-main">
     <section class="manage-section">
+      <h2>iDRAC credentials</h2>
+      <form id="idrac-form" class="cred-form">
+        <label>iDRAC username <input id="idrac-user" type="text" autocomplete="off" spellcheck="false"></label>
+        <label>iDRAC password <input id="idrac-password" type="password" autocomplete="new-password"></label>
+        <label class="toggle-row span-2"><input id="idrac-password-clear" type="checkbox"> Clear stored iDRAC password</label>
+        <div class="form-actions"><button type="submit">Save credentials</button></div>
+      </form>
+      <p class="hint">
+        Used to query the hosts in servers.json and manually added nodes.
+        Stored encrypted (AES-256-GCM, key in data/.enc_key). Leave the
+        password blank to keep the stored one. These values override the
+        IDRAC_USER/IDRAC_PASSWORD environment variables.
+      </p>
+    </section>
+
+    <section class="manage-section">
       <h2>LLDP collection</h2>
       <label class="toggle-row">
         <input id="lldp-enabled" type="checkbox">
@@ -51,22 +67,24 @@
       </p>
 
       <div id="powerflex-fields" hidden>
-        <h3>Connection</h3>
-        <form id="powerflex-form">
-          <label>PowerFlex Manager URL <input id="powerflex-url" type="text" placeholder="https://pfxmgr.example.com" autocomplete="off" spellcheck="false"></label>
+        <form id="powerflex-form" class="cred-form">
+          <h3>Connection</h3>
+          <label class="span-2">PowerFlex Manager URL <input id="powerflex-url" type="text" placeholder="https://pfxmgr.example.com" autocomplete="off" spellcheck="false"></label>
           <label>PowerFlex username <input id="powerflex-user" type="text" autocomplete="off" spellcheck="false"></label>
           <label>PowerFlex password <input id="powerflex-password" type="password" autocomplete="new-password"></label>
-          <label class="toggle-row"><input id="powerflex-password-clear" type="checkbox"> Clear stored PowerFlex password</label>
+          <label class="toggle-row span-2"><input id="powerflex-password-clear" type="checkbox"> Clear stored PowerFlex password</label>
 
-          <h3>iDRAC credentials</h3>
-          <label>iDRAC username <input id="idrac-user" type="text" autocomplete="off" spellcheck="false"></label>
-          <label>iDRAC password <input id="idrac-password" type="password" autocomplete="new-password"></label>
-          <label class="toggle-row"><input id="idrac-password-clear" type="checkbox"> Clear stored iDRAC password</label>
+          <h3>iDRAC credentials (discovered hosts)</h3>
+          <label>iDRAC username <input id="pfx-idrac-user" type="text" autocomplete="off" spellcheck="false"></label>
+          <label>iDRAC password <input id="pfx-idrac-password" type="password" autocomplete="new-password"></label>
+          <label class="toggle-row span-2"><input id="pfx-idrac-password-clear" type="checkbox"> Clear stored iDRAC password</label>
 
-          <details>
+          <details class="span-2">
             <summary>Advanced API paths</summary>
-            <label>Login path <input id="powerflex-login-path" type="text" placeholder="/rest/login" autocomplete="off" spellcheck="false"></label>
-            <label>Resources path <input id="powerflex-resources-path" type="text" placeholder="/rest/api/v1/resources" autocomplete="off" spellcheck="false"></label>
+            <div class="details-grid">
+              <label>Login path <input id="powerflex-login-path" type="text" placeholder="/rest/login" autocomplete="off" spellcheck="false"></label>
+              <label>Resources path <input id="powerflex-resources-path" type="text" placeholder="/rest/api/v1/resources" autocomplete="off" spellcheck="false"></label>
+            </div>
             <p class="hint">
               PowerFlex Manager 4.x API paths vary by deployment. Leave blank
               for the defaults; run probe-powerflex.sh against your appliance
@@ -82,7 +100,8 @@
         <p class="hint">
           Passwords are stored encrypted (AES-256-GCM, key in data/.enc_key).
           Leave a password blank to keep the stored one; check "clear" to
-          remove it. iDRAC credentials set here override the
+          remove it. The iDRAC credentials here apply only to
+          PowerFlex-discovered hosts and override the
           IDRAC_USER/IDRAC_PASSWORD environment variables.
         </p>
         <h3>Discovered hosts</h3>

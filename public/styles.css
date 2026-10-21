@@ -130,6 +130,25 @@ header h1 { font-size: 1.25rem; margin: 0; }
 #add-switch-form input:focus, #add-switch-form select:focus { outline: none; border-color: var(--server); }
 #add-switch-form button { justify-self: start; grid-column: 1 / -1; }
 
+.cred-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.cred-form .span-2 { grid-column: 1 / -1; }
+.cred-form h3 { grid-column: 1 / -1; margin: 8px 0 0; font-size: 0.85rem; color: var(--muted); }
+.cred-form h3:first-child { margin-top: 0; }
+.cred-form label:not(.toggle-row) { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+.cred-form input:not([type="checkbox"]) {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+}
+.cred-form input:not([type="checkbox"]):focus { outline: none; border-color: var(--server); }
+.cred-form details { border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; }
+.cred-form summary { font-size: 0.85rem; color: var(--muted); cursor: pointer; }
+.cred-form .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+#powerflex-fields > h3 { margin: 16px 0 6px; font-size: 0.85rem; color: var(--muted); }
+
 .managed-group { margin-bottom: 16px; }
 .managed-group h3 { margin: 0 0 6px; font-size: 0.85rem; color: var(--muted); }
 .managed-item {
