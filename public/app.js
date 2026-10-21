@@ -181,8 +181,28 @@ function renderServer(server) {
     el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') window.open(`https://${server.host}`, '_blank', 'noopener');
     });
+  } else {
+    el.tabIndex = 0;
+    const copySsh = () => copySshTarget(`admin@${server.name}`, label);
+    el.addEventListener('click', copySsh);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') copySsh();
+    });
   }
   return el;
+}
+
+// Clicking a switch copies its SSH target to the clipboard; the label shows
+// the copied value briefly as confirmation.
+async function copySshTarget(target, labelEl) {
+  const original = labelEl.textContent;
+  try {
+    await navigator.clipboard.writeText(target);
+    labelEl.textContent = `copied ${target}`;
+  } catch {
+    labelEl.textContent = 'copy failed';
+  }
+  setTimeout(() => { labelEl.textContent = original; }, 1500);
 }
 
 function renderCard(server, className) {

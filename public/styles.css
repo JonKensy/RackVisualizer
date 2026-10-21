@@ -243,7 +243,7 @@ button:hover { border-color: var(--server); }
   overflow: hidden;
 }
 .server:hover { background: var(--server-hover); }
-.server.switch { background: var(--switch); border-color: #0b6b5c; cursor: default; }
+.server.switch { background: var(--switch); border-color: #0b6b5c; }
 .server.switch:hover { background: var(--switch-hover); }
 
 .server.overlap { border: 2px solid var(--error); }
