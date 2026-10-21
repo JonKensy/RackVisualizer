@@ -1,17 +1,37 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { macMatchKey } from '../lib/parse.js';
+import { matchMacName } from '../lib/parse.js';
 
-test('macMatchKey drops the last two octets so base and interface MACs match', () => {
-  assert.equal(macMatchKey('e4:89:ca:49:2e:27'), 'e4:89:ca:49');
-  assert.equal(macMatchKey('e4:89:ca:49:00:00'), 'e4:89:ca:49');
-  assert.equal(macMatchKey('e4:89:ca:49:2e:27'), macMatchKey('e4:89:ca:49:00:00'));
-  assert.equal(macMatchKey('14:bc:68:58:9f:00'), macMatchKey('14:bc:68:58:9f:b0'));
+test('exact entries match only the exact MAC', () => {
+  const entries = [{ mac: '14:bc:68:4a:dc:37', name: 'leaf-a' }];
+  assert.equal(matchMacName('14:bc:68:4a:dc:37', entries), 'leaf-a');
+  assert.equal(matchMacName('14:bc:68:4a:dc:38', entries), null);
 });
 
-test('macMatchKey returns empty string for non-normalized input', () => {
-  assert.equal(macMatchKey(''), '');
-  assert.equal(macMatchKey('e4:89:ca:49'), '');
-  assert.equal(macMatchKey(null), '');
-  assert.equal(macMatchKey(undefined), '');
+test('trailing wildcard covers the switch port range', () => {
+  const entries = [{ mac: '14:bc:68:4a:dc:*', name: 'leaf-a' }];
+  assert.equal(matchMacName('14:bc:68:4a:dc:37', entries), 'leaf-a');
+  assert.equal(matchMacName('14:bc:68:4a:dd:37', entries), null);
+});
+
+test('adjacent switches with per-port wildcards stay distinct', () => {
+  const entries = [
+    { mac: '4c:25:51:5c:04:*', name: 'leaf-a' },
+    { mac: '4c:25:51:5c:05:*', name: 'leaf-b' },
+  ];
+  assert.equal(matchMacName('4c:25:51:5c:04:84', entries), 'leaf-a');
+  assert.equal(matchMacName('4c:25:51:5c:05:12', entries), 'leaf-b');
+});
+
+test('longest prefix wins', () => {
+  const entries = [
+    { mac: '4c:25:51:*', name: 'pair' },
+    { mac: '4c:25:51:5c:04:*', name: 'leaf-a' },
+  ];
+  assert.equal(matchMacName('4c:25:51:5c:04:84', entries), 'leaf-a');
+});
+
+test('empty or malformed inputs never match', () => {
+  assert.equal(matchMacName('', [{ mac: '4c:25:51:5c:04:*', name: 'leaf-a' }]), null);
+  assert.equal(matchMacName('4c:25:51:5c:04:84', [{ mac: '', name: 'bad' }]), null);
 });

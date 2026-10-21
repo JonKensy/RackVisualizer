@@ -112,17 +112,21 @@
     <section class="manage-section">
       <h2>Switch MAC to Name</h2>
       <form id="add-mac-form">
-        <label>Switch MAC address <input id="mac-address" type="text" placeholder="00:1c:73:0f:64:a2" autocomplete="off" spellcheck="false" required></label>
+        <label>Switch MAC address <input id="mac-address" type="text" placeholder="4c:25:51:5c:04:*" autocomplete="off" spellcheck="false" required></label>
         <label>Friendly name <input id="mac-name" type="text" placeholder="leaf-01" autocomplete="off" required></label>
         <button type="submit">Add mapping</button>
       </form>
       <p class="hint">
         LLDP tooltips show the friendly name when the switch chassis MAC
         reported by the iDRAC matches an entry here. Any common MAC notation
-        (colons, dashes, dots, or bare hex) is accepted and normalized. The
-        last two octets are ignored when matching — switches encode the port
-        number in them, so enter any values there (e.g. <code>:00:00</code>)
-        and the entry matches every port on that switch.
+        (colons, dashes, dots, or bare hex) is accepted and normalized.
+        Switches advertise each port's own MAC (allocated sequentially from a
+        pool base), so enter the Port Mac Address of one port with
+        <code>*</code> for the trailing octet(s) — e.g.
+        <code>4c:25:51:5c:04:*</code> covers every port whose MAC starts with
+        <code>4c:25:51:5c:04</code>. On a Nexus, find it with
+        <code>show lldp interface ethernet 1/1</code>. Longer entries win, so
+        switches with adjacent MAC blocks stay distinct.
       </p>
       <h3>Current mappings</h3>
       <div id="mac-list"></div>

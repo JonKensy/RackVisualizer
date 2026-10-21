@@ -37,7 +37,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cookieSession from 'cookie-session';
 import { fetchHostSystem, fetchHostLldp, verifyHost } from './lib/redfish.js';
-import { buildServer, buildRacks, parseLocation, decodeLldpId, macMatchKey } from './lib/parse.js';
+import { buildServer, buildRacks, parseLocation, decodeLldpId, matchMacName } from './lib/parse.js';
 import { loadOrCreateSecret, ensureDefaultUsers, authenticate, hashPassword, verifyPassword, SESSION_MAX_AGE_MS } from './lib/auth.js';
 import { loadOrCreateKey, encryptSecret, decryptSecret } from './lib/crypto.js';
 import { fetchIdracHosts } from './lib/powerflex.js';
@@ -178,10 +178,20 @@ const savePfxHosts = (list) => saveList(POWERFLEX_HOSTS_PATH, list);
 
 // Accepts any common MAC notation (colon, dash, dot, or bare hex) and
 // normalizes to lowercase colon-separated pairs; null when not 12 hex digits.
+// Stored switch mappings may additionally use trailing '*' octets (e.g.
+// 4c:25:51:5c:04:*) to cover a switch's per-port MAC range.
 function normalizeMac(raw) {
-  const hex = String(raw ?? '').replace(/[^0-9A-Fa-f]/g, '');
-  if (hex.length !== 12) return null;
-  return (hex.match(/.{2}/g) ?? []).join(':').toLowerCase();
+  const s = String(raw ?? '').trim().toLowerCase();
+  if (!s.includes('*')) {
+    const hex = s.replace(/[^0-9a-f]/g, '');
+    if (hex.length !== 12) return null;
+    return (hex.match(/.{2}/g) ?? []).join(':');
+  }
+  const parts = s.split(/[^0-9a-f*]+/).filter(Boolean);
+  if (parts.length !== 6 || !parts.every((p) => /^[0-9a-f]{2}$/.test(p) || p === '*')) return null;
+  const firstStar = parts.indexOf('*');
+  if (firstStar < 1 || !parts.slice(firstStar).every((p) => p === '*')) return null;
+  return parts.join(':');
 }
 
 // Merges the admin file with user-added hosts, deduped case-insensitively.
@@ -658,12 +668,11 @@ app.get('/api/switch-macs', (req, res) => {
 app.post('/api/switch-macs', express.json({ limit: '16kb' }), (req, res) => {
   const mac = normalizeMac(req.body?.mac);
   const name = String(req.body?.name ?? '').trim();
-  if (!mac) return res.status(400).json({ error: 'Invalid MAC address (expected 12 hex digits)' });
+  if (!mac) return res.status(400).json({ error: 'Invalid MAC address (expected 6 octets, optionally with trailing * octets, e.g. 00:1c:73:0f:64:*)' });
   if (!name || name.length > 100) return res.status(400).json({ error: 'Switch name is required (max 100 chars)' });
   const list = loadSwitchMacs();
-  const key = macMatchKey(mac);
-  if (list.some((m) => macMatchKey(normalizeMac(m.mac) ?? '') === key)) {
-    return res.status(409).json({ error: `${mac} conflicts with an existing mapping (the last two octets are ignored — they identify the switch port)` });
+  if (list.some((m) => (normalizeMac(m.mac) ?? '') === mac)) {
+    return res.status(409).json({ error: `${mac} is already mapped` });
   }
   list.push({ mac, name });
   saveSwitchMacs(list);
@@ -697,7 +706,7 @@ app.get('/api/nodes/:host/lldp', async (req, res) => {
     const systemData = await fetchHostSystem(host, creds);
     const systemOdataId = systemData.system['@odata.id'] ?? `/redfish/v1/Systems/${systemData.serviceTag}`;
     const ports = await fetchHostLldp(host, creds, systemOdataId);
-    const macNames = new Map(loadSwitchMacs().map((m) => [macMatchKey(normalizeMac(m.mac) ?? ''), m.name]));
+    const macEntries = loadSwitchMacs().map((m) => ({ mac: normalizeMac(m.mac) ?? '', name: m.name }));
     res.json({
       host,
       ports: ports.map((p) => ({
@@ -706,7 +715,7 @@ app.get('/api/nodes/:host/lldp', async (req, res) => {
           ? {
               chassisId: decodeLldpId(p.lldp.ChassisId),
               chassisIdSubtype: p.lldp.ChassisIdSubtype ?? null,
-              chassisName: macNames.get(macMatchKey(normalizeMac(p.lldp.ChassisId) ?? '')) ?? null,
+              chassisName: matchMacName(normalizeMac(p.lldp.ChassisId) ?? '', macEntries),
               portId: decodeLldpId(p.lldp.PortId),
               portIdSubtype: p.lldp.PortIdSubtype ?? null,
             }
