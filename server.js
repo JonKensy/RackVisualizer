@@ -663,7 +663,7 @@ app.post('/api/switch-macs', express.json({ limit: '16kb' }), (req, res) => {
   const list = loadSwitchMacs();
   const key = macMatchKey(mac);
   if (list.some((m) => macMatchKey(normalizeMac(m.mac) ?? '') === key)) {
-    return res.status(409).json({ error: `${mac} conflicts with an existing mapping (the last octet is ignored — it identifies the switch port)` });
+    return res.status(409).json({ error: `${mac} conflicts with an existing mapping (the last two octets are ignored — they identify the switch port)` });
   }
   list.push({ mac, name });
   saveSwitchMacs(list);

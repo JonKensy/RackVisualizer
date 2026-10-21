@@ -120,9 +120,9 @@
         LLDP tooltips show the friendly name when the switch chassis MAC
         reported by the iDRAC matches an entry here. Any common MAC notation
         (colons, dashes, dots, or bare hex) is accepted and normalized. The
-        last octet is ignored when matching — switches encode the port number
-        in it, so enter any value there (e.g. <code>:00</code>) and the entry
-        matches every port on that switch.
+        last two octets are ignored when matching — switches encode the port
+        number in them, so enter any values there (e.g. <code>:00:00</code>)
+        and the entry matches every port on that switch.
       </p>
       <h3>Current mappings</h3>
       <div id="mac-list"></div>
