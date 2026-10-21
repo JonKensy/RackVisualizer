@@ -20,11 +20,11 @@ docker compose build
 
 # Tag it with a stable, explicit name (the compose-generated name depends on
 # the directory name, so don't rely on it for transfer)
-docker tag powerflex-visualizer_rack-visualizer:latest rack-visualizer:1.3.2
+docker tag powerflex-visualizer_rack-visualizer:latest rack-visualizer:1.3.3
 
 # Export the image (compressed) and record a checksum
-docker save rack-visualizer:1.3.2 | gzip > rack-visualizer-1.3.2.tar.gz
-sha256sum rack-visualizer-1.3.2.tar.gz
+docker save rack-visualizer:1.3.3 | gzip > rack-visualizer-1.3.3.tar.gz
+sha256sum rack-visualizer-1.3.3.tar.gz
 ```
 
 Bump the version tag (`1.1.0` → `1.1.1` …) on each migration so the target
@@ -48,10 +48,10 @@ host can tell which build it has.
 cd ~/powerflex-visualizer
 
 # Verify the transfer survived intact
-sha256sum rack-visualizer-1.3.2.tar.gz   # must match the source checksum
+sha256sum rack-visualizer-1.3.3.tar.gz   # must match the source checksum
 
 # Import the image
-docker load -i rack-visualizer-1.3.2.tar.gz
+docker load -i rack-visualizer-1.3.3.tar.gz
 
 # Lock down secrets
 chmod 600 .env certs/server.key
@@ -74,7 +74,7 @@ curl -sk -o /dev/null -w '%{http_code}\n' https://localhost:8082/api/racks   # e
   install offline.
 - **Architecture must match.** The image is `linux/amd64` (standard x86_64
   x86_64 VM is fine). Check with
-  `docker image inspect rack-visualizer:1.3.2 --format '{{.Architecture}}'`.
+  `docker image inspect rack-visualizer:1.3.3 --format '{{.Architecture}}'`.
   For an ARM target, rebuild here with `docker build --platform linux/arm64`.
 - **TLS cert SANs.** The cert covers whatever hostnames/IPs it was generated
   for (see README.md). If users reach the new VM by a different hostname or IP,
@@ -100,13 +100,15 @@ There is no registry to pull from, so every future change repeats the cycle:
 
 ## 6. Current staged artifact (this migration)
 
-- Tarball: `~/powerflex-visualizer/rack-visualizer-1.3.2.tar.gz` (gzip)
-- SHA-256: `cecbf08367ef4b284fd211edc06e480fa1a644925e7625429f6f6125013cb923`
-- Image: `rack-visualizer:1.3.2` (linux/amd64) — switch MAC→name lookups now
-  match on the first four octets (some switches' port numbering spills past
-  the last octet, so 1.3.1's five-octet match missed them). Includes the
-  1.3.1 fixes (initial port-octet MAC matching + "PFlex" rack labels). No
-  `.env` or `data/` changes required. 1.1.2/1.2.0/1.3.0/1.3.1 are superseded.
+- Tarball: `~/powerflex-visualizer/rack-visualizer-1.3.3.tar.gz` (gzip)
+- SHA-256: `c7a09f7b863911b0bac98d13b0604f7be4514a3a65452456af523d54ed1dac59`
+- Image: `rack-visualizer:1.3.3` (linux/amd64) — switch MAC→name mappings now
+  use per-entry trailing `*` wildcards (e.g. `4c:25:51:5c:04:*`) instead of
+  the fixed four-octet rule, so adjacent switches with consecutive MAC blocks
+  stay distinct; Redfish requests now retry once on stale keep-alive resets
+  (the occasional iDRAC "socket hang up"). **NOTE:** existing switch mappings
+  must be re-entered with a trailing `*` — a full MAC now means exact match.
+  No `.env` changes required. 1.1.2/1.2.0/1.3.0/1.3.1/1.3.2 are superseded.
 
 ### 1.2.0+ upgrade notes
 
