@@ -5,7 +5,7 @@
 #   docker compose -f docker-compose.offline.yml up -d
 services:
   rack-visualizer:
-    image: rack-visualizer:1.3.1
+    image: rack-visualizer:1.3.2
     ports:
       - "8082:8080"
     volumes:
