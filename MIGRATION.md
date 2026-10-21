@@ -1,7 +1,7 @@
 # Air-Gapped Migration Guide
 
 How to move the Rack Visualizer to a host with Docker but **no internet/registry
-access** (e.g. the Oracle Linux 9 VM). The approach: build the image on a
+access** (e.g. an air-gapped Linux VM). The approach: build the image on a
 connected machine, export it with `docker save`, transfer files via SCP, and
 import them with `docker load`.
 
@@ -69,11 +69,11 @@ curl -sk -o /dev/null -w '%{http_code}\n' https://localhost:8082/api/racks   # e
 ## 4. Caveats / pre-flight checklist
 
 - **Docker must be installed before the air-gap.** Installing Docker Engine +
-  Compose v2 on OEL9 normally needs package access; do it while the VM still
+  Compose v2 normally needs package access; do it while the VM still
   has connectivity, or transfer the RPMs (`dnf download --resolve`) and
   install offline.
 - **Architecture must match.** The image is `linux/amd64` (standard x86_64
-  OEL9 VM is fine). Check with
+  x86_64 VM is fine). Check with
   `docker image inspect rack-visualizer:1.3.0 --format '{{.Architecture}}'`.
   For an ARM target, rebuild here with `docker build --platform linux/arm64`.
 - **TLS cert SANs.** The cert covers whatever hostnames/IPs it was generated
