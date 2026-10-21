@@ -20,11 +20,11 @@ docker compose build
 
 # Tag it with a stable, explicit name (the compose-generated name depends on
 # the directory name, so don't rely on it for transfer)
-docker tag powerflex-visualizer_rack-visualizer:latest rack-visualizer:1.3.0
+docker tag powerflex-visualizer_rack-visualizer:latest rack-visualizer:1.3.1
 
 # Export the image (compressed) and record a checksum
-docker save rack-visualizer:1.3.0 | gzip > rack-visualizer-1.3.0.tar.gz
-sha256sum rack-visualizer-1.3.0.tar.gz
+docker save rack-visualizer:1.3.1 | gzip > rack-visualizer-1.3.1.tar.gz
+sha256sum rack-visualizer-1.3.1.tar.gz
 ```
 
 Bump the version tag (`1.1.0` → `1.1.1` …) on each migration so the target
@@ -48,10 +48,10 @@ host can tell which build it has.
 cd ~/powerflex-visualizer
 
 # Verify the transfer survived intact
-sha256sum rack-visualizer-1.3.0.tar.gz   # must match the source checksum
+sha256sum rack-visualizer-1.3.1.tar.gz   # must match the source checksum
 
 # Import the image
-docker load -i rack-visualizer-1.3.0.tar.gz
+docker load -i rack-visualizer-1.3.1.tar.gz
 
 # Lock down secrets
 chmod 600 .env certs/server.key
@@ -74,7 +74,7 @@ curl -sk -o /dev/null -w '%{http_code}\n' https://localhost:8082/api/racks   # e
   install offline.
 - **Architecture must match.** The image is `linux/amd64` (standard x86_64
   x86_64 VM is fine). Check with
-  `docker image inspect rack-visualizer:1.3.0 --format '{{.Architecture}}'`.
+  `docker image inspect rack-visualizer:1.3.1 --format '{{.Architecture}}'`.
   For an ARM target, rebuild here with `docker build --platform linux/arm64`.
 - **TLS cert SANs.** The cert covers whatever hostnames/IPs it was generated
   for (see README.md). If users reach the new VM by a different hostname or IP,
@@ -100,13 +100,13 @@ There is no registry to pull from, so every future change repeats the cycle:
 
 ## 6. Current staged artifact (this migration)
 
-- Tarball: `~/powerflex-visualizer/rack-visualizer-1.3.0.tar.gz` (gzip)
-- SHA-256: `5972f3c22111085a374e889690b7aacc33abed4fb86098620ca110fd99123740`
-- Image: `rack-visualizer:1.3.0` (linux/amd64) — adds an "iDRAC credentials"
-  section at the top of Settings: an encrypted username/password pair used to
-  query servers.json and manually added hosts (PowerFlex-discovered hosts use
-  the separate pair in the PowerFlex section). Also includes the 1.2.0
-  "Discover iDRAC from PowerFlex" feature. 1.1.2/1.2.0 are superseded.
+- Tarball: `~/powerflex-visualizer/rack-visualizer-1.3.1.tar.gz` (gzip)
+- SHA-256: `6b58321f429da8e7cc60f1e0d43b714baf6cc325f8d0b8529226e500329d65ff`
+- Image: `rack-visualizer:1.3.1` (linux/amd64) — two fixes over 1.3.0: switch
+  MAC→name lookups now match on the first five octets (LLDP reports the
+  switch's per-port MAC, which differs from the base MAC in the last octet),
+  and rack labels shorten "PowerFlex rack R660 C" to "PFlex R660 C". No
+  `.env` or `data/` changes required. 1.1.2/1.2.0/1.3.0 are superseded.
 
 ### 1.2.0+ upgrade notes
 
